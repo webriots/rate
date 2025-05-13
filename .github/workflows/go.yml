@@ -1,0 +1,32 @@
+name: Go
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.24.3"
+
+      - name: Build
+        run: go build -v ./...
+
+      - name: Test
+        run: go test -race -covermode atomic -coverprofile=coverage.out ./...
+
+      - name: Goveralls
+        run: go install github.com/mattn/goveralls@latest
+
+      - name: Coverage
+        env:
+          COVERALLS_TOKEN: ${{ secrets.COVERALLS }}
+        run: goveralls -coverprofile=coverage.out -service=github
