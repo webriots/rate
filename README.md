@@ -387,7 +387,7 @@ func handleRequest(backendID []byte) {
 The library is designed with these principles in mind:
 
 1. **Performance First**: Every operation is optimized for minimal CPU and memory usage
-2. **Thread Safety**: All operations are thread-safe for concurrent environments
+2. **Thread Safety**: All operations are thread-safe for concurrent environments without lock contention
 3. **Memory Efficiency**: Uses packed representation and custom implementations for efficient storage
 4. **Simplicity**: Provides simple interfaces for common rate limiting patterns
 5. **Flexibility**: Multiple strategies to handle different rate limiting requirements
