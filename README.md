@@ -69,6 +69,8 @@ func main() {
 }
 ```
 
+[Go Playground](https://go.dev/play/p/70DxTct1Dl3)
+
 ### AIMD Rate Limiter
 
 ```go
@@ -124,9 +126,12 @@ func main() {
 
 func processRequest() bool {
     // Your request processing logic
+    fmt.Println("Processing request")
     return true
 }
 ```
+
+[Go Playground](https://go.dev/play/p/4pONFkbzAag)
 
 ## Detailed Usage
 
