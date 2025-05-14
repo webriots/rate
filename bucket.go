@@ -13,7 +13,7 @@ import (
 // a specified rate.
 type TokenBucketLimiter struct {
 	buckets             atomicSliceUint64 // Array of token buckets
-	bucketMask          uint              // Bit mask for IDs tobuckets
+	bucketMask          uint              // Bit mask for IDs to buckets
 	burstCapacity       uint8             // Maximum tokens per bucket
 	refillIntervalNanos int64             // Nanoseconds per token refill
 	numBuckets          uint              // Number of buckets (pow^2)
