@@ -74,7 +74,7 @@ func TestAIMDIncreaseRate(t *testing.T) {
 	// Take tokens and increase rate
 	for range 5 {
 		r.True(limiter.TakeToken(id))
-		limiter.IncreaseRateForID(id)
+		limiter.IncreaseRate(id)
 		tick(10 * time.Millisecond) // Simulate time passing for refill
 	}
 
@@ -94,21 +94,21 @@ func TestAIMDDecreaseRate(t *testing.T) {
 
 	// Increase rate first
 	for range 10 {
-		limiter.IncreaseRateForID(id)
+		limiter.IncreaseRate(id)
 	}
 	r.Equal(11.0, sec(limiter.rates.Get(index))) // 1 + 10 = 11.0
 
 	// Simulate throttling
-	limiter.DecreaseRateForID(id)
+	limiter.DecreaseRate(id)
 	r.Equal(5.5, sec(limiter.rates.Get(index))) // 11 / 2 = 5.5
 
-	limiter.DecreaseRateForID(id)
+	limiter.DecreaseRate(id)
 	r.Equal(2.75, sec(limiter.rates.Get(index))) // 5.5 / 2 = 2.75
 
-	limiter.DecreaseRateForID(id)
+	limiter.DecreaseRate(id)
 	r.Equal(1.375, sec(limiter.rates.Get(index))) // 2.75 / 2 < 1.375
 
-	limiter.DecreaseRateForID(id)
+	limiter.DecreaseRate(id)
 	r.Equal(aimdMinRate, sec(limiter.rates.Get(index))) // 1.375 / 2 < 1, so minRate
 }
 
@@ -124,7 +124,7 @@ func TestAIMDRateEdgeCases(t *testing.T) {
 	// Test increase when rate equals max rate (early return case)
 	limiter.rates.Set(index, limiter.rateMax)
 	initialRate := limiter.rates.Get(index)
-	limiter.IncreaseRateForID(id)
+	limiter.IncreaseRate(id)
 	r.Equal(initialRate, limiter.rates.Get(index), "rate should not change when at max")
 
 	// Test case where rate == next (no change needed)
@@ -134,13 +134,13 @@ func TestAIMDRateEdgeCases(t *testing.T) {
 	// Force a situation where rate + increase == rate (unlikely in real usage)
 	// This happens when increase is so small it doesn't change the int64 value
 	limiter.rateAI = 0 // artificially set to 0 for test
-	limiter.IncreaseRateForID(id)
+	limiter.IncreaseRate(id)
 	r.Equal(initialRate, limiter.rates.Get(index), "rate should not change when increase is too small")
 
 	// Test decrease when rate equals min rate (early return case)
 	limiter.rates.Set(index, limiter.rateMin)
 	initialRate = limiter.rates.Get(index)
-	limiter.DecreaseRateForID(id)
+	limiter.DecreaseRate(id)
 	r.Equal(initialRate, limiter.rates.Get(index), "rate should not change when at min")
 }
 
@@ -171,8 +171,8 @@ func TestAIMDDecreaseWithUnchangedRate(t *testing.T) {
 	initialRate := limiter.rates.Get(index)
 
 	// With rateMD = 1.0, the calculation rate/rateMD will equal rate
-	// So this should trigger the "rate == next" case in DecreaseRateForID
-	limiter.DecreaseRateForID(id)
+	// So this should trigger the "rate == next" case in DecreaseRate
+	limiter.DecreaseRate(id)
 
 	// Rate should remain unchanged
 	r.Equal(initialRate, limiter.rates.Get(index),
@@ -190,13 +190,13 @@ func TestAIMDRateLimits(t *testing.T) {
 
 	// Increase rate beyond max
 	for range int(aimdMaxRate + 10) {
-		limiter.IncreaseRateForID(id)
+		limiter.IncreaseRate(id)
 	}
 	r.Equal(aimdMaxRate, sec(limiter.rates.Get(index)), "rate should not exceed maxRate")
 
 	// Decrease rate below min
 	for range 10 {
-		limiter.DecreaseRateForID(id)
+		limiter.DecreaseRate(id)
 	}
 	r.Equal(aimdMinRate, sec(limiter.rates.Get(index)), "rate should not drop below minRate")
 }
@@ -216,9 +216,9 @@ func TestAIMDConcurrency(t *testing.T) {
 		group.Go(func() error {
 			for range iterations {
 				if limiter.TakeToken(id) {
-					limiter.IncreaseRateForID(id)
+					limiter.IncreaseRate(id)
 				} else {
-					limiter.DecreaseRateForID(id)
+					limiter.DecreaseRate(id)
 				}
 				tick(1 * time.Millisecond)
 			}
@@ -249,7 +249,7 @@ func TestAIMDRateAfterBurst(t *testing.T) {
 	for range 15 {
 		if limiter.TakeToken(id) {
 			allowed++
-			limiter.IncreaseRateForID(id)
+			limiter.IncreaseRate(id)
 		}
 		tick(100 * time.Millisecond)
 	}

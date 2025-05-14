@@ -112,11 +112,11 @@ func main() {
 
         if success {
             // If successful, increase the rate
-            limiter.IncreaseRateForID(id)
+            limiter.IncreaseRate(id)
         } else {
             // If failed (e.g., downstream service is overloaded),
             // decrease the rate to back off
-            limiter.DecreaseRateForID(id)
+            limiter.DecreaseRate(id)
         }
     } else {
         // We're being rate limited
@@ -131,7 +131,7 @@ func processRequest() bool {
 }
 ```
 
-[Go Playground](https://go.dev/play/p/4pONFkbzAag)
+[Go Playground](https://go.dev/play/p/S9Xjz5Dojbv)
 
 ## Detailed Usage
 

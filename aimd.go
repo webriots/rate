@@ -89,13 +89,13 @@ func (a *AIMDTokenBucketLimiter) Check(id []byte) bool {
 	return a.limiter.checkInner(index, rate)
 }
 
-// IncreaseRateForID additively increases the rate for the bucket
+// IncreaseRate additively increases the rate for the bucket
 // associated with the given ID. This implements the "additive
 // increase" part of the AIMD algorithm, typically called on
 // successful operations. The rate is increased by rateAI up to the
 // maximum rate (rateMax). This method is thread-safe and uses atomic
 // operations to ensure consistency.
-func (a *AIMDTokenBucketLimiter) IncreaseRateForID(id []byte) {
+func (a *AIMDTokenBucketLimiter) IncreaseRate(id []byte) {
 	index := a.limiter.index(id)
 	for {
 		rate := a.rates.Get(index)
@@ -118,14 +118,14 @@ func (a *AIMDTokenBucketLimiter) IncreaseRateForID(id []byte) {
 	}
 }
 
-// DecreaseRateForID multiplicatively decreases the rate for the
-// bucket associated with the given ID. This implements the
-// "multiplicative decrease" part of the AIMD algorithm, typically
-// called when congestion or failures occur. The rate is decreased by
-// dividing by rateMD, but will not go below the minimum rate
-// (rateMin). This method is thread-safe and uses atomic operations to
-// ensure consistency.
-func (a *AIMDTokenBucketLimiter) DecreaseRateForID(id []byte) {
+// DecreaseRate multiplicatively decreases the rate for the bucket
+// associated with the given ID. This implements the "multiplicative
+// decrease" part of the AIMD algorithm, typically called when
+// congestion or failures occur. The rate is decreased by dividing by
+// rateMD, but will not go below the minimum rate (rateMin). This
+// method is thread-safe and uses atomic operations to ensure
+// consistency.
+func (a *AIMDTokenBucketLimiter) DecreaseRate(id []byte) {
 	index := a.limiter.index(id)
 	for {
 		rate := a.rates.Get(index)
