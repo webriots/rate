@@ -120,9 +120,9 @@ func (t *TokenBucketLimiter) takeTokenInner(index int, rate int64) bool {
 // seed is used globally for index bucket hash generation.
 var seed = maphash.MakeSeed()
 
-// index calculates the bucket index for the given ID using the FNV-1a
-// hash. The result is masked to ensure it falls within the range of
-// valid buckets.
+// index calculates the bucket index for the given ID using maphash.
+// The result is masked to ensure it falls within the range of valid
+// buckets.
 func (t *TokenBucketLimiter) index(id []byte) int {
 	return int(maphash.Bytes(seed, id) & (t.numBuckets - 1))
 }
