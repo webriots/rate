@@ -10,6 +10,7 @@ A high-performance rate limiting library for Go applications with multiple rate 
 
 - **Ultra-Fast**: Core operations complete in 1-15ns with zero allocations
 - **Thread-Safe**: All operations are designed to be thread-safe using optimized atomic operations
+- **Zero External Dependencies**: Relies solely on the Go standard library
 - **Memory Efficient**: Uses compact data structures and optimized storage
   - Packed representations for token buckets
   - Custom 56-bit timestamp implementation

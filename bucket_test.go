@@ -2,14 +2,13 @@ package rate
 
 import (
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"testing/quick"
 	"time"
 
-	"github.com/stretchr/testify/require"
 	"github.com/webriots/rate/time56"
-	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -24,27 +23,32 @@ func DefaultLimiter() (*TokenBucketLimiter, error) {
 
 // TestTokenBucketLimiterError tests constructor error case
 func TestTokenBucketLimiterError(t *testing.T) {
-	r := require.New(t)
-
 	// Try creating with non-power-of-two buckets
 	_, err := NewTokenBucketLimiter(3, burstCapacity, ratePerSecond, time.Second)
-	r.Error(err, "should error on non-power-of-two bucket count")
-	r.Contains(err.Error(), "power of two", "error message should mention power of two")
+	if err == nil {
+		t.Error("Expected error for non-power-of-two bucket count, got nil")
+	}
+
+	if err != nil && !containsSubstring(err.Error(), "power of two") {
+		t.Error("Error message should mention 'power of two'")
+	}
 }
 
 func TestTokenBucketRefill(t *testing.T) {
-	r := require.New(t)
-
 	limiter, err := DefaultLimiter()
-	r.NoError(err)
+	if err != nil {
+		t.Fatalf("Failed to create limiter: %v", err)
+	}
 
 	fullBucket := newTokenBucket(burstCapacity, 0)
-	r.Equal(fullBucket.refill(1<<40, limiter.refillIntervalNanos, burstCapacity), fullBucket)
+	result := fullBucket.refill(1<<40, limiter.refillIntervalNanos, burstCapacity)
+
+	if fullBucket != result {
+		t.Errorf("refill() = %v, want %v", result, fullBucket)
+	}
 }
 
 func TestTokenBucketPackUnpack(t *testing.T) {
-	r := require.New(t)
-
 	f := func(ts uint64, level uint8) bool {
 		tb := tokenBucket{
 			stamp: time56.New(ts),
@@ -55,63 +59,75 @@ func TestTokenBucketPackUnpack(t *testing.T) {
 		return unpacked == tb
 	}
 
-	r.NoError(quick.Check(f, nil))
+	if err := quick.Check(f, nil); err != nil {
+		t.Errorf("quick.Check failed: %v", err)
+	}
 }
 
 func TestTokenBucketRefillOld(t *testing.T) {
-	r := require.New(t)
-
 	limiter, err := DefaultLimiter()
-	r.NoError(err)
+	if err != nil {
+		t.Fatalf("Failed to create limiter: %v", err)
+	}
 
 	old := tokenBucket{}
 	refilled := old.refill(1<<40, limiter.refillIntervalNanos, limiter.burstCapacity)
 
-	r.Equal(burstCapacity, refilled.level)
-	r.Greater(refilled.stamp.Uint64(), uint64(0))
+	if refilled.level != burstCapacity {
+		t.Errorf("refilled.level = %d, want %d", refilled.level, burstCapacity)
+	}
+
+	if refilled.stamp.Uint64() <= 0 {
+		t.Errorf("refilled.stamp = %d, want > 0", refilled.stamp.Uint64())
+	}
 }
 
 func TestTokenBucketAddSingleToken(t *testing.T) {
-	r := require.New(t)
-
 	limiter, err := DefaultLimiter()
-	r.NoError(err)
+	if err != nil {
+		t.Fatalf("Failed to create limiter: %v", err)
+	}
 
 	f := func(start int64) bool {
 		end := start + limiter.refillIntervalNanos
 		return newTokenBucket(0, time56.Unix(start)).refill(end, limiter.refillIntervalNanos, limiter.burstCapacity).level == 1
 	}
 
-	r.NoError(quick.Check(f, nil))
+	if err := quick.Check(f, nil); err != nil {
+		t.Errorf("quick.Check failed: %v", err)
+	}
 }
 
 func TestTokenBucketNoTokenRefill(t *testing.T) {
-	r := require.New(t)
-
 	limiter, err := DefaultLimiter()
-	r.NoError(err)
+	if err != nil {
+		t.Fatalf("Failed to create limiter: %v", err)
+	}
 
 	f := func(start int64) bool {
 		end := start + limiter.refillIntervalNanos - 1
 		return newTokenBucket(0, time56.Unix(start)).refill(end, limiter.refillIntervalNanos, limiter.burstCapacity).level == 0
 	}
 
-	r.NoError(quick.Check(f, nil))
+	if err := quick.Check(f, nil); err != nil {
+		t.Errorf("quick.Check failed: %v", err)
+	}
 }
 
 func TestTokenBucketEmptyNoChange(t *testing.T) {
-	r := require.New(t)
-
 	bucket := newTokenBucket(0, 0)
 	taken, changed := bucket.take()
 
-	r.Equal(bucket, taken)
-	r.False(changed)
+	if bucket != taken {
+		t.Errorf("take(): got %v, want %v", taken, bucket)
+	}
+
+	if changed {
+		t.Error("take(): changed = true, want false")
+	}
 }
 
 func TestTokenBucketNonEmptyDecrement(t *testing.T) {
-	r := require.New(t)
-
 	taken, changed := newTokenBucket(10, 0).take()
 
 	expect := tokenBucket{
@@ -119,83 +135,104 @@ func TestTokenBucketNonEmptyDecrement(t *testing.T) {
 		stamp: 0,
 	}
 
-	r.Equal(expect, taken)
-	r.True(changed)
+	if taken != expect {
+		t.Errorf("take(): got %v, want %v", taken, expect)
+	}
+
+	if !changed {
+		t.Error("take(): changed = false, want true")
+	}
 }
 
 func TestTokenBucketRateOnlyAfterBurst(t *testing.T) {
-	r := require.New(t)
-
 	limiter, err := DefaultLimiter()
-	r.NoError(err)
+	if err != nil {
+		t.Fatalf("Failed to create limiter: %v", err)
+	}
 
 	ids := GenIDs(100)
 
 	for range burstCapacity {
 		for _, id := range ids {
-			r.True(limiter.TakeToken(id))
+			if !limiter.TakeToken(id) {
+				t.Error("TakeToken should succeed during burst")
+			}
 		}
 	}
 
 	for _, id := range ids {
-		r.False(limiter.TakeToken(id))
+		if limiter.TakeToken(id) {
+			t.Error("TakeToken should fail after burst")
+		}
 	}
 }
 
 func TestTokenBucketRateAfterBurst(t *testing.T) {
-	r := require.New(t)
-
 	limiter, err := DefaultLimiter()
-	r.NoError(err)
+	if err != nil {
+		t.Fatalf("Failed to create limiter: %v", err)
+	}
 
 	ids := GenIDs(100)
 
 	for range burstCapacity {
 		for _, id := range ids {
-			r.True(limiter.TakeToken(id))
+			if !limiter.TakeToken(id) {
+				t.Error("TakeToken should succeed during burst")
+			}
 		}
 	}
 
 	// No tokens remaining
 	for _, id := range ids {
-		r.False(limiter.TakeToken(id))
+		if limiter.TakeToken(id) {
+			t.Error("TakeToken should fail after burst")
+		}
 	}
 
 	var (
 		allowed atomic.Int64
-		group   errgroup.Group
+		wg      sync.WaitGroup
 	)
 
 	threads := 4
 	sleep := 10 * time.Millisecond
 	duration := 10 * time.Second
 	attempts := threads * int(duration/sleep)
-
-	group.SetLimit(threads)
+	semaphore := make(chan struct{}, threads)
 
 	start := nowfn().UnixNano()
 
-	// simulate concurrent token attempts with time advancement
 	for range attempts {
-		group.Go(func() error {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			semaphore <- struct{}{}
+			defer func() { <-semaphore }()
+
 			tick(sleep)
 			for _, id := range ids {
 				if limiter.TakeToken(id) {
 					allowed.Add(1)
 				}
 			}
-			return nil
-		})
+		}()
 	}
 
-	r.NoError(group.Wait())
+	wg.Wait()
 
 	// compute elapsed simulated time
 	elapsed := time.Duration(nowfn().UnixNano() - start)
 	rate := (float64(allowed.Load()) / float64(len(ids))) / elapsed.Seconds()
 
-	r.GreaterOrEqual(rate, ratePerSecond-0.1)
-	r.LessOrEqual(rate, ratePerSecond+0.1)
+	if rate < ratePerSecond-0.1 {
+		t.Errorf("Rate too low: got %f, want at least %f", rate, ratePerSecond-0.1)
+	}
+
+	if rate > ratePerSecond+0.1 {
+		t.Errorf("Rate too high: got %f, want at most %f", rate, ratePerSecond+0.1)
+	}
 }
 
 func GenIDs(count int) [][]byte {
@@ -228,43 +265,57 @@ func BenchmarkTokenBucketCheck(b *testing.B) {
 
 // TestTokenBucketCheck verifies the Check method's non-consuming behavior.
 func TestTokenBucketCheck(t *testing.T) {
-	r := require.New(t)
 	limiter, err := DefaultLimiter()
-	r.NoError(err)
+	if err != nil {
+		t.Fatalf("Failed to create limiter: %v", err)
+	}
 
 	id := []byte("check-test")
 
 	// Check should return true initially when tokens are available
-	r.True(limiter.Check(id), "check should return true when tokens are available")
+	if !limiter.Check(id) {
+		t.Error("Check should return true when tokens are available")
+	}
 
 	// Multiple checks should not consume tokens
 	for range 5 {
-		r.True(limiter.Check(id), "repeated checks should not consume tokens")
+		if !limiter.Check(id) {
+			t.Error("Repeated checks should not consume tokens")
+		}
 	}
 
 	// We should still be able to take all burst capacity tokens
 	for i := range int(burstCapacity) {
-		r.True(limiter.TakeToken(id), "should take token %d after checks", i)
+		if !limiter.TakeToken(id) {
+			t.Errorf("Failed to take token at i=%d after checks", i)
+		}
 	}
 
 	// After taking all tokens, check should return false
-	r.False(limiter.Check(id), "check should return false when no tokens available")
+	if limiter.Check(id) {
+		t.Error("Check should return false when no tokens available")
+	}
 
 	// Check should continue to return false and not affect state
-	r.False(limiter.Check(id), "check should consistently return false when no tokens")
+	if limiter.Check(id) {
+		t.Error("Check should consistently return false when no tokens")
+	}
 
 	// Wait for refill
 	tick(time.Second * 2)
 
 	// Now check should return true again
-	r.True(limiter.Check(id), "check should return true after refill")
+	if !limiter.Check(id) {
+		t.Error("Check should return true after refill")
+	}
 }
 
 // TestTokenBucketCheckInner verifies the checkInner method with different rates.
 func TestTokenBucketCheckInner(t *testing.T) {
-	r := require.New(t)
 	limiter, err := DefaultLimiter()
-	r.NoError(err)
+	if err != nil {
+		t.Fatalf("Failed to create limiter: %v", err)
+	}
 
 	id := []byte("inner-check-test")
 	index := limiter.index(id)
@@ -275,20 +326,41 @@ func TestTokenBucketCheckInner(t *testing.T) {
 	slowRate := limiter.refillIntervalNanos * 2 // Slower refill
 
 	// Initially all should return true
-	r.True(limiter.checkInner(index, fastRate), "fast rate check should be true")
-	r.True(limiter.checkInner(index, normalRate), "normal rate check should be true")
-	r.True(limiter.checkInner(index, slowRate), "slow rate check should be true")
+	if !limiter.checkInner(index, fastRate) {
+		t.Error("Fast rate check should be true initially")
+	}
+
+	if !limiter.checkInner(index, normalRate) {
+		t.Error("Normal rate check should be true initially")
+	}
+
+	if !limiter.checkInner(index, slowRate) {
+		t.Error("Slow rate check should be true initially")
+	}
 
 	// Exhaust the tokens
 	for range int(burstCapacity) {
-		r.True(limiter.TakeToken(id))
+		if !limiter.TakeToken(id) {
+			t.Error("TakeToken should succeed")
+		}
 	}
-	r.False(limiter.TakeToken(id))
+
+	if limiter.TakeToken(id) {
+		t.Error("TakeToken should fail after burst")
+	}
 
 	// All rates should return false immediately after exhaustion
-	r.False(limiter.checkInner(index, fastRate), "fast rate check should be false")
-	r.False(limiter.checkInner(index, normalRate), "normal rate check should be false")
-	r.False(limiter.checkInner(index, slowRate), "slow rate check should be false")
+	if limiter.checkInner(index, fastRate) {
+		t.Error("Fast rate check should be false after exhaustion")
+	}
+
+	if limiter.checkInner(index, normalRate) {
+		t.Error("Normal rate check should be false after exhaustion")
+	}
+
+	if limiter.checkInner(index, slowRate) {
+		t.Error("Slow rate check should be false after exhaustion")
+	}
 
 	// Wait for partial refill
 	tick(500 * time.Millisecond)
@@ -302,7 +374,9 @@ func TestTokenBucketCheckInner(t *testing.T) {
 	tick(time.Second)
 
 	// Normal rate should definitely have refilled
-	r.True(limiter.checkInner(index, normalRate), "normal rate should refill after 1 second")
+	if !limiter.checkInner(index, normalRate) {
+		t.Error("Normal rate should refill after 1 second")
+	}
 }
 
 func BenchmarkTokenBucketTakeToken(b *testing.B) {
@@ -514,4 +588,18 @@ func BenchmarkTokenBucketWithRefill(b *testing.B) {
 		}
 		limiter.TakeToken(id)
 	}
+}
+
+// Helper function to check if a string contains a substring
+func containsSubstring(s, substr string) bool {
+	return len(s) >= len(substr) && len(substr) > 0 && s != substr && s != "" && (s == substr || containsSubstringHelper(s, substr))
+}
+
+func containsSubstringHelper(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }

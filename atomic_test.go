@@ -1,47 +1,73 @@
 package rate
 
-import (
-	"testing"
-
-	"github.com/stretchr/testify/require"
-)
+import "testing"
 
 // TestAtomicSliceBasic verifies basic Get, Set, CompareAndSet, and Max operations.
 func TestAtomicSliceBasic(t *testing.T) {
-	r := require.New(t)
 	// Create a slice of length 3
-	a := newAtomicSliceInt64(3)
+	slice := newAtomicSliceInt64(3)
+
 	// Initial values should be zero
-	r.Equal(int64(0), a.Get(0))
+	if got := slice.Get(0); got != 0 {
+		t.Errorf("Initial value: got %d, want 0", got)
+	}
+
 	// Set and Get
-	a.Set(1, 42)
-	r.Equal(int64(42), a.Get(1))
+	slice.Set(1, 42)
+	if got := slice.Get(1); got != 42 {
+		t.Errorf("After Set: got %d, want 42", got)
+	}
+
 	// CompareAndSet success
-	ok := a.CompareAndSwap(1, 42, 100)
-	r.True(ok)
-	r.Equal(int64(100), a.Get(1))
+	ok := slice.CompareAndSwap(1, 42, 100)
+	if !ok {
+		t.Error("CompareAndSwap should succeed")
+	}
+	if got := slice.Get(1); got != 100 {
+		t.Errorf("After CompareAndSwap: got %d, want 100", got)
+	}
+
 	// CompareAndSet failure
-	ok = a.CompareAndSwap(1, 42, 200)
-	r.False(ok)
-	r.Equal(int64(100), a.Get(1))
+	ok = slice.CompareAndSwap(1, 42, 200)
+	if ok {
+		t.Error("CompareAndSwap should fail")
+	}
+	if got := slice.Get(1); got != 100 {
+		t.Errorf("After failed CompareAndSwap: got %d, should still be 100", got)
+	}
 }
 
 // TestAtomicSliceUint64Basic verifies basic operations for atomicSliceUint64.
 func TestAtomicSliceUint64Basic(t *testing.T) {
-	r := require.New(t)
 	// Create a slice of length 3
-	a := newAtomicSliceUint64(3)
+	slice := newAtomicSliceUint64(3)
+
 	// Initial values should be zero
-	r.Equal(uint64(0), a.Get(0))
+	if got := slice.Get(0); got != 0 {
+		t.Errorf("Initial value: got %d, want 0", got)
+	}
+
 	// Set and Get
-	a.Set(1, 42)
-	r.Equal(uint64(42), a.Get(1))
+	slice.Set(1, 42)
+	if got := slice.Get(1); got != 42 {
+		t.Errorf("After Set: got %d, want 42", got)
+	}
+
 	// CompareAndSet success
-	ok := a.CompareAndSwap(1, 42, 100)
-	r.True(ok)
-	r.Equal(uint64(100), a.Get(1))
+	ok := slice.CompareAndSwap(1, 42, 100)
+	if !ok {
+		t.Error("CompareAndSwap should succeed")
+	}
+	if got := slice.Get(1); got != 100 {
+		t.Errorf("After CompareAndSwap: got %d, want 100", got)
+	}
+
 	// CompareAndSet failure
-	ok = a.CompareAndSwap(1, 42, 200)
-	r.False(ok)
-	r.Equal(uint64(100), a.Get(1))
+	ok = slice.CompareAndSwap(1, 42, 200)
+	if ok {
+		t.Error("CompareAndSwap should fail")
+	}
+	if got := slice.Get(1); got != 100 {
+		t.Errorf("After failed CompareAndSwap: got %d, should still be 100", got)
+	}
 }
