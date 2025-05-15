@@ -2,6 +2,7 @@ package rate
 
 import (
 	"fmt"
+	"hash/maphash"
 	"time"
 
 	"github.com/webriots/rate/time56"
@@ -13,10 +14,9 @@ import (
 // a specified rate.
 type TokenBucketLimiter struct {
 	buckets             atomicSliceUint64 // Array of token buckets
-	bucketMask          uint              // Bit mask for IDs to buckets
+	numBuckets          uint64            // Number of buckets (pow^2)
 	burstCapacity       uint8             // Maximum tokens per bucket
 	refillIntervalNanos int64             // Nanoseconds per token refill
-	numBuckets          uint              // Number of buckets (pow^2)
 	refillRate          float64           // Original refill rate value
 	refillRateUnit      time.Duration     // Time unit for refill rate
 }
@@ -55,11 +55,10 @@ func NewTokenBucketLimiter(
 
 	return &TokenBucketLimiter{
 		burstCapacity:       burstCapacity,
-		numBuckets:          numBuckets,
+		numBuckets:          uint64(numBuckets),
 		refillRate:          refillRate,
 		refillRateUnit:      refillRateUnit,
 		refillIntervalNanos: nanoRate(refillRateUnit, refillRate),
-		bucketMask:          numBuckets - 1,
 		buckets:             buckets,
 	}, nil
 }
@@ -118,16 +117,14 @@ func (t *TokenBucketLimiter) takeTokenInner(index int, rate int64) bool {
 	}
 }
 
+// seed is used globally for index bucket hash generation.
+var seed = maphash.MakeSeed()
+
 // index calculates the bucket index for the given ID using the FNV-1a
 // hash. The result is masked to ensure it falls within the range of
 // valid buckets.
 func (t *TokenBucketLimiter) index(id []byte) int {
-	h := uint(14695981039346656037)
-	for _, b := range id {
-		h ^= uint(b)
-		h *= 1099511628211
-	}
-	return int(h & t.bucketMask)
+	return int(maphash.Bytes(seed, id) & (t.numBuckets - 1))
 }
 
 // tokenBucket represents a single token bucket with a certain level

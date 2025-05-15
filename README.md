@@ -208,28 +208,28 @@ Here are the results from an Apple M1 Pro:
 
 ```
 # Core operations
-BenchmarkTokenBucketCheck-10               121748242        9.931 ns/op        0 B/op        0 allocs/op
-BenchmarkTokenBucketTakeToken-10           100000000       10.64 ns/op         0 B/op        0 allocs/op
-BenchmarkTokenBucketParallel-10            1000000000       1.028 ns/op        0 B/op        0 allocs/op
-BenchmarkTokenBucketContention-10          660214292        1.806 ns/op        0 B/op        0 allocs/op
-BenchmarkTokenBucketWithRefill-10          93371283        12.74 ns/op         0 B/op        0 allocs/op
+BenchmarkTokenBucketCheck-10                    164063450                7.279 ns/op           0 B/op          0 allocs/op
+BenchmarkTokenBucketTakeToken-10                150341438                7.981 ns/op           0 B/op          0 allocs/op
+BenchmarkTokenBucketParallel-10                 1000000000               1.115 ns/op           0 B/op          0 allocs/op
+BenchmarkTokenBucketContention-10               1000000000               1.001 ns/op           0 B/op          0 allocs/op
+BenchmarkTokenBucketWithRefill-10               138591127                8.699 ns/op           0 B/op          0 allocs/op
 
 # Bucket creation (different sizes)
-BenchmarkTokenBucketCreateSmall-10         22975209        53.01 ns/op       208 B/op        2 allocs/op
-BenchmarkTokenBucketCreateMedium-10          951474      1231 ns/op        8272 B/op        2 allocs/op
-BenchmarkTokenBucketCreateLarge-10            78274     15459 ns/op      131154 B/op        2 allocs/op
+BenchmarkTokenBucketCreateSmall-10              16974966                71.35 ns/op          192 B/op          2 allocs/op
+BenchmarkTokenBucketCreateMedium-10               696861              1781 ns/op            8256 B/op          2 allocs/op
+BenchmarkTokenBucketCreateLarge-10                 50068             24202 ns/op          131137 B/op          2 allocs/op
 
 # Internals
-BenchmarkTokenBucketPacked-10              1000000000       0.3125 ns/op       0 B/op        0 allocs/op
-BenchmarkTokenBucketUnpack-10              1000000000       0.3122 ns/op       0 B/op        0 allocs/op
-BenchmarkTokenBucketIndex-10               639574326        1.875 ns/op        0 B/op        0 allocs/op
-BenchmarkTokenBucketRefill-10              588361956        2.091 ns/op        0 B/op        0 allocs/op
+BenchmarkTokenBucketPacked-10                   1000000000               0.3104 ns/op          0 B/op          0 allocs/op
+BenchmarkTokenBucketUnpack-10                   1000000000               0.3103 ns/op          0 B/op          0 allocs/op
+BenchmarkTokenBucketIndex-10                    265611426                4.510 ns/op           0 B/op          0 allocs/op
+BenchmarkTokenBucketRefill-10                   591397021                2.023 ns/op           0 B/op          0 allocs/op
 
 # Real-world scenarios
-BenchmarkTokenBucketManyIDs-10             129551595        8.976 ns/op        0 B/op        0 allocs/op
-BenchmarkTokenBucketDynamicID-10            44916133       26.61 ns/op         7 B/op        1 allocs/op
-BenchmarkTokenBucketRealWorldRequestRate-10 1000000000      0.9832 ns/op       0 B/op        0 allocs/op
-BenchmarkTokenBucketHighContention-10      1000000000       0.8619 ns/op       0 B/op        0 allocs/op
+BenchmarkTokenBucketManyIDs-10                  131259206                9.211 ns/op           0 B/op          0 allocs/op
+BenchmarkTokenBucketDynamicID-10                40364173                27.98 ns/op            7 B/op          0 allocs/op
+BenchmarkTokenBucketRealWorldRequestRate-10     1000000000               1.148 ns/op           0 B/op          0 allocs/op
+BenchmarkTokenBucketHighContention-10           1000000000               1.078 ns/op           0 B/op          0 allocs/op
 ```
 
 ## Advanced Usage
@@ -242,19 +242,14 @@ The `numBuckets` parameter must be a power of two (e.g., 256, 1024, 4096) for ef
 
 When you call `TakeToken(id)` or similar methods, the library:
 
-1. Hashes the ID using FNV-1a hash algorithm
-2. Uses the hash value & bucket mask (numBuckets-1) to determine the bucket index
+1. Hashes the ID using Go's built-in hash/maphash algorithm (non-cryptographic, high performance)
+2. Uses the hash value & (numBuckets-1) to determine the bucket index
 3. Takes/checks a token from that specific bucket
 
 ```go
 // Simplified version of the internal hashing mechanism
-func index(id []byte, bucketMask uint) int {
-    h := uint(14695981039346656037) // FNV-1a offset basis
-    for _, b := range id {
-        h ^= uint(b)
-        h *= 1099511628211 // FNV-1a prime
-    }
-    return int(h & bucketMask) // Ensure index is within valid range
+func index(id []byte) int {
+    return int(maphash.Bytes(seed, id) & (numBuckets - 1))
 }
 ```
 
