@@ -621,7 +621,7 @@ func TestCeilPow2(t *testing.T) {
 		input    uint64
 		expected uint64
 	}{
-		{0, 0},                   // Edge case: 0 rounds to 0
+		{0, 1},                   // Edge case: 0 returns 1
 		{1, 1},                   // Power of 2 stays the same
 		{2, 2},                   // Power of 2 stays the same
 		{3, 4},                   // Round up to next power of 2
@@ -644,9 +644,15 @@ func TestCeilPow2(t *testing.T) {
 		{(1 << 31) + 1, 1 << 32}, // Round up to next power of 2
 		{1 << 32, 1 << 32},       // Power of 2 stays the same
 		{(1 << 32) + 1, 1 << 33}, // Round up to next power of 2
-		{1 << 63, 1 << 63},       // Power of 2 stays the same
-		{(1 << 63) - 1, 1 << 63}, // Round up to next power of 2 (max possible)
-		// Note: Testing (1<<63)+1 would cause overflow in ceilPow2
+		{1 << 61, 1 << 61},       // Power of 2 stays the same
+		{(1 << 61) + 1, 1 << 62}, // Round up to next power of 2
+		{1 << 62, 1 << 62},       // Maximum allowed power of 2
+		// Testing values above the maxPow2 limit (2^62)
+		{(1 << 62) + 1, maxPow2}, // Exceeds max allowed - returns maxPow2
+		{1 << 63, maxPow2},       // Exceeds max allowed - returns maxPow2
+		{(1 << 63) - 1, maxPow2}, // Exceeds max allowed - returns maxPow2
+		{1<<63 + 1, maxPow2},     // Exceeds max allowed - returns maxPow2
+		{^uint64(0), maxPow2},    // Max uint64 value - returns maxPow2
 	}
 
 	for _, tc := range testCases {

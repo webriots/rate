@@ -204,11 +204,26 @@ func nanoRate(refillRateUnit time.Duration, refillRate float64) int64 {
 	return int64(float64(refillRateUnit.Nanoseconds()) * refillRate)
 }
 
+// maxPow2 defines the maximum power of two value that ceilPow2 will
+// return. This prevents potential overflow issues when rounding up
+// values close to the maximum uint64 value. Using 2^62 allows safe
+// bit manipulation while still providing an extremely large maximum
+// bucket count.
+const maxPow2 = 1 << 62
+
 // ceilPow2 rounds up the given number to the nearest power of two. If
 // the input is already a power of two, it returns the input
 // unchanged. This implementation uses a bit manipulation algorithm
 // for efficiency.
 func ceilPow2(x uint64) uint64 {
+	if x == 0 {
+		return 1
+	}
+
+	if x >= maxPow2 {
+		return maxPow2
+	}
+
 	x = x - 1
 	x |= x >> 1
 	x |= x >> 2
