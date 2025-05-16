@@ -42,18 +42,19 @@ func NewTokenBucketLimiter(
 	refillRate float64,
 	refillRateUnit time.Duration,
 ) (*TokenBucketLimiter, error) {
+	n := ceilPow2(uint64(numBuckets))
 	now := nowfn().UnixNano()
 	stamp := time56.Unix(now)
 	bucket := newTokenBucket(burstCapacity, stamp)
 	packed := bucket.packed()
-	buckets := newAtomicSliceUint64(int(numBuckets))
+	buckets := newAtomicSliceUint64(int(n))
 	for i := range numBuckets {
 		buckets.Set(int(i), packed)
 	}
 
 	return &TokenBucketLimiter{
 		burstCapacity:       burstCapacity,
-		numBuckets:          ceilPow2(uint64(numBuckets)),
+		numBuckets:          n,
 		refillRate:          refillRate,
 		refillRateUnit:      refillRateUnit,
 		refillIntervalNanos: nanoRate(refillRateUnit, refillRate),
