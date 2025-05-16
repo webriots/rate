@@ -50,11 +50,11 @@ func TestAIMDBasic(t *testing.T) {
 	}
 }
 
-// TestAIMDLimiterError tests error case in constructor
-func TestAIMDLimiterError(t *testing.T) {
-	// Test with non-power-of-two bucket size which should fail
-	_, err := NewAIMDTokenBucketLimiter(
-		3, // Not power of two
+// TestAIMDLimiterRoundingToPowerOfTwo verifies numBuckets is rounded up to the next power of two
+func TestAIMDLimiterRoundingToPowerOfTwo(t *testing.T) {
+	// Test with non-power-of-two bucket size
+	limiter, err := NewAIMDTokenBucketLimiter(
+		3, // Not power of two, should be rounded up to 4
 		burstCapacity,
 		aimdMinRate,
 		aimdMaxRate,
@@ -63,9 +63,13 @@ func TestAIMDLimiterError(t *testing.T) {
 		aimdDecreaseByFactor,
 		time.Second,
 	)
+	if err != nil {
+		t.Fatalf("Expected no error with non-power-of-two bucket count, got: %v", err)
+	}
 
-	if err == nil {
-		t.Error("Expected error for non-power-of-two bucket count, got nil")
+	// Check that the inner token bucket limiter has 4 buckets (next power of two after 3)
+	if limiter.limiter.numBuckets != 4 {
+		t.Errorf("Expected numBuckets to be rounded up to 4, got %d", limiter.limiter.numBuckets)
 	}
 }
 
