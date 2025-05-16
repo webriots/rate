@@ -44,7 +44,7 @@ import (
 
 func main() {
     // Create a new token bucket limiter:
-    // - 1024 buckets (automatically rounded to next power of 2)
+    // - 1024 buckets (automatically rounded to nearest power of 2 if not already a power of 2)
     // - 10 tokens burst capacity
     // - 100 tokens per second refill rate
     limiter, err := rate.NewTokenBucketLimiter(1024, 10, 100, time.Second)
@@ -86,7 +86,7 @@ import (
 
 func main() {
     // Create an AIMD token bucket limiter:
-    // - 1024 buckets (automatically rounded to next power of 2)
+    // - 1024 buckets (automatically rounded to nearest power of 2 if not already a power of 2)
     // - 10 tokens burst capacity
     // - Min rate: 1 token/s, Max rate: 100 tokens/s, Initial rate: 10 tokens/s
     // - Increase by 1 token/s on success, decrease by factor of 2 on failure
@@ -142,7 +142,7 @@ The token bucket algorithm is a common rate limiting strategy that allows for co
 
 ```go
 limiter, err := rate.NewTokenBucketLimiter(
-    numBuckets,     // Number of buckets (automatically rounded to next power of 2)
+    numBuckets,     // Number of buckets (automatically rounded to nearest power of 2 if not already a power of 2)
     burstCapacity,  // Maximum number of tokens in each bucket
     refillRate,     // Rate at which tokens are refilled
     refillRateUnit, // Time unit for refill rate
@@ -151,7 +151,7 @@ limiter, err := rate.NewTokenBucketLimiter(
 
 #### Parameters:
 
-- `numBuckets`: Number of token buckets (automatically rounded up to the next power of two)
+- `numBuckets`: Number of token buckets (automatically rounded up to the nearest power of two if not already a power of two)
 - `burstCapacity`: Maximum number of tokens that can be consumed at once
 - `refillRate`: Rate at which tokens are refilled
 - `refillRateUnit`: Time unit for refill rate calculations (e.g., time.Second)
@@ -162,7 +162,7 @@ The AIMD (Additive Increase, Multiplicative Decrease) algorithm provides dynamic
 
 ```go
 limiter, err := rate.NewAIMDTokenBucketLimiter(
-    numBuckets,                // Number of buckets (automatically rounded to next power of 2)
+    numBuckets,                // Number of buckets (automatically rounded to nearest power of 2 if not already a power of 2)
     burstCapacity,             // Maximum tokens per bucket
     rateMin,                   // Minimum token refill rate
     rateMax,                   // Maximum token refill rate
@@ -175,7 +175,7 @@ limiter, err := rate.NewAIMDTokenBucketLimiter(
 
 #### Parameters:
 
-- `numBuckets`: Number of token buckets (automatically rounded up to the next power of two)
+- `numBuckets`: Number of token buckets (automatically rounded up to the nearest power of two if not already a power of two)
 - `burstCapacity`: Maximum number of tokens that can be consumed at once
 - `rateMin`: Minimum token refill rate
 - `rateMax`: Maximum token refill rate
@@ -236,7 +236,7 @@ BenchmarkTokenBucketHighContention-10           1000000000               1.078 n
 
 ### Choosing the Optimal Number of Buckets
 
-The `numBuckets` parameter is automatically rounded up to the next power of two (e.g., 256, 1024, 4096) for efficient hashing and is a critical factor in the limiter's performance and fairness.
+The `numBuckets` parameter is automatically rounded up to the nearest power of two if not already a power of two (e.g., 256, 1024, 4096) for efficient hashing and is a critical factor in the limiter's performance and fairness.
 
 #### How Bucket Selection Works
 
@@ -321,7 +321,7 @@ Memory usage scales linearly with `numBuckets`, so there's a trade-off between c
 ```go
 // Example for a system with ~5,000 distinct IDs
 limiter, err := rate.NewTokenBucketLimiter(
-    65536,    // numBuckets (will be kept as 2^16) to maintain <10% collision probability
+    65536,    // numBuckets (will remain 2^16 since it's already a power of 2) to maintain <10% collision probability
     10,       // burstCapacity
     100,      // refillRate
     time.Second,
