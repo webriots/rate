@@ -21,7 +21,8 @@ type AIMDTokenBucketLimiter struct {
 // with the given parameters:
 //
 //   - numBuckets: number of token buckets (automatically rounded up
-//     to the next power of two for efficient hashing)
+//     to the nearest power of two if not already a power of two, for
+//     efficient hashing)
 //   - burstCapacity: max number of tokens that can be consumed at
 //     once
 //   - rateMin: minimum token refill rate

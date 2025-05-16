@@ -23,8 +23,9 @@ type TokenBucketLimiter struct {
 // NewTokenBucketLimiter creates a new token bucket rate limiter with
 // the specified parameters:
 //
-//   - numBuckets: number of token buckets (automatically rounded up to the
-//     next power of two for efficient hashing)
+//   - numBuckets: number of token buckets (automatically rounded up
+//     to the nearest power of two if not already a power of two, for
+//     efficient hashing)
 //   - burstCapacity: maximum number of tokens that can be consumed at
 //     once
 //   - refillRate: rate at which tokens are refilled
@@ -33,7 +34,8 @@ type TokenBucketLimiter struct {
 //
 // Returns a new TokenBucketLimiter instance and any error that
 // occurred during creation. The numBuckets parameter is automatically
-// rounded up to the next power of two for efficient hashing.
+// rounded up to the nearest power of two if not already a power of
+// two, for efficient hashing.
 func NewTokenBucketLimiter(
 	numBuckets uint,
 	burstCapacity uint8,
@@ -201,7 +203,7 @@ func nanoRate(refillRateUnit time.Duration, refillRate float64) int64 {
 	return int64(float64(refillRateUnit.Nanoseconds()) * refillRate)
 }
 
-// ceilPow2 rounds up the given number to the next power of two. If
+// ceilPow2 rounds up the given number to the nearest power of two. If
 // the input is already a power of two, it returns the input
 // unchanged. This implementation uses a bit manipulation algorithm
 // for efficiency.
