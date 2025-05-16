@@ -36,41 +36,41 @@ go get github.com/webriots/rate
 package main
 
 import (
-    "fmt"
-    "time"
+	"fmt"
+	"time"
 
-    "github.com/webriots/rate"
+	"github.com/webriots/rate"
 )
 
 func main() {
-    // Create a new token bucket limiter:
-    // - 1024 buckets (automatically rounded to nearest power of 2 if not already a power of 2)
-    // - 10 tokens burst capacity
-    // - 100 tokens per second refill rate
-    limiter, err := rate.NewTokenBucketLimiter(1024, 10, 100, time.Second)
-    if err != nil {
-        panic(err)
-    }
+	// Create a new token bucket limiter:
+	// - 1024 buckets (automatically rounded to nearest power of 2 if not already a power of 2)
+	// - 10 tokens burst capacity
+	// - 100 tokens per second refill rate
+	limiter, err := rate.NewTokenBucketLimiter(1024, 10, 100, time.Second)
+	if err != nil {
+		panic(err)
+	}
 
-    // Try to take a token for a specific ID
-    id := []byte("user-123")
+	// Try to take a token for a specific ID
+	id := []byte("user-123")
 
-    if limiter.TakeToken(id) {
-        fmt.Println("Token acquired, proceeding with request")
-        // ... process the request
-    } else {
-        fmt.Println("Rate limited, try again later")
-        // ... return rate limit error
-    }
+	if limiter.TakeToken(id) {
+		fmt.Println("Token acquired, proceeding with request")
+		// ... process the request
+	} else {
+		fmt.Println("Rate limited, try again later")
+		// ... return rate limit error
+	}
 
-    // Check without consuming
-    if limiter.Check(id) {
-        fmt.Println("Token would be available")
-    }
+	// Check without consuming
+	if limiter.Check(id) {
+		fmt.Println("Token would be available")
+	}
 }
 ```
 
-[Go Playground](https://go.dev/play/p/70DxTct1Dl3)
+[Go Playground](https://go.dev/play/p/UMxQDHfqKqD)
 
 ### AIMD Rate Limiter
 
@@ -78,61 +78,61 @@ func main() {
 package main
 
 import (
-    "fmt"
-    "time"
+	"fmt"
+	"time"
 
-    "github.com/webriots/rate"
+	"github.com/webriots/rate"
 )
 
 func main() {
-    // Create an AIMD token bucket limiter:
-    // - 1024 buckets (automatically rounded to nearest power of 2 if not already a power of 2)
-    // - 10 tokens burst capacity
-    // - Min rate: 1 token/s, Max rate: 100 tokens/s, Initial rate: 10 tokens/s
-    // - Increase by 1 token/s on success, decrease by factor of 2 on failure
-    limiter, err := rate.NewAIMDTokenBucketLimiter(
-        1024,      // numBuckets
-        10,        // burstCapacity
-        1.0,       // rateMin
-        100.0,     // rateMax
-        10.0,      // rateInit
-        1.0,       // rateAdditiveIncrease
-        2.0,       // rateMultiplicativeDecrease
-        time.Second,
-    )
-    if err != nil {
-        panic(err)
-    }
+	// Create an AIMD token bucket limiter:
+	// - 1024 buckets (automatically rounded to nearest power of 2 if not already a power of 2)
+	// - 10 tokens burst capacity
+	// - Min rate: 1 token/s, Max rate: 100 tokens/s, Initial rate: 10 tokens/s
+	// - Increase by 1 token/s on success, decrease by factor of 2 on failure
+	limiter, err := rate.NewAIMDTokenBucketLimiter(
+		1024,  // numBuckets
+		10,    // burstCapacity
+		1.0,   // rateMin
+		100.0, // rateMax
+		10.0,  // rateInit
+		1.0,   // rateAdditiveIncrease
+		2.0,   // rateMultiplicativeDecrease
+		time.Second,
+	)
+	if err != nil {
+		panic(err)
+	}
 
-    id := []byte("api-client-123")
+	id := []byte("api-client-123")
 
-    // Try to take a token
-    if limiter.TakeToken(id) {
-        // Process the request
-        success := processRequest()
+	// Try to take a token
+	if limiter.TakeToken(id) {
+		// Process the request
+		success := processRequest()
 
-        if success {
-            // If successful, increase the rate
-            limiter.IncreaseRate(id)
-        } else {
-            // If failed (e.g., downstream service is overloaded),
-            // decrease the rate to back off
-            limiter.DecreaseRate(id)
-        }
-    } else {
-        // We're being rate limited
-        fmt.Println("Rate limited, try again later")
-    }
+		if success {
+			// If successful, increase the rate
+			limiter.IncreaseRate(id)
+		} else {
+			// If failed (e.g., downstream service is overloaded),
+			// decrease the rate to back off
+			limiter.DecreaseRate(id)
+		}
+	} else {
+		// We're being rate limited
+		fmt.Println("Rate limited, try again later")
+	}
 }
 
 func processRequest() bool {
-    // Your request processing logic
-    fmt.Println("Processing request")
-    return true
+	// Your request processing logic
+	fmt.Println("Processing request")
+	return true
 }
 ```
 
-[Go Playground](https://go.dev/play/p/S9Xjz5Dojbv)
+[Go Playground](https://go.dev/play/p/2AEPxptA2xd)
 
 ## Detailed Usage
 
