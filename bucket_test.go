@@ -21,16 +21,27 @@ func DefaultLimiter() (*TokenBucketLimiter, error) {
 	return NewTokenBucketLimiter(numBuckets, burstCapacity, ratePerSecond, time.Second)
 }
 
-// TestTokenBucketLimiterError tests constructor error case
-func TestTokenBucketLimiterError(t *testing.T) {
+// TestTokenBucketRoundingToPowerOfTwo verifies numBuckets is rounded up to the next power of two
+func TestTokenBucketRoundingToPowerOfTwo(t *testing.T) {
 	// Try creating with non-power-of-two buckets
-	_, err := NewTokenBucketLimiter(3, burstCapacity, ratePerSecond, time.Second)
-	if err == nil {
-		t.Error("Expected error for non-power-of-two bucket count, got nil")
+	limiter, err := NewTokenBucketLimiter(3, burstCapacity, ratePerSecond, time.Second)
+	if err != nil {
+		t.Fatalf("Expected no error with non-power-of-two bucket count, got: %v", err)
 	}
 
-	if err != nil && !containsSubstring(err.Error(), "power of two") {
-		t.Error("Error message should mention 'power of two'")
+	// Should be rounded up to 4 (next power of two after 3)
+	if limiter.numBuckets != 4 {
+		t.Errorf("Expected numBuckets to be rounded up to 4, got %d", limiter.numBuckets)
+	}
+
+	// Test with a power of two (should remain unchanged)
+	limiter, err = NewTokenBucketLimiter(16, burstCapacity, ratePerSecond, time.Second)
+	if err != nil {
+		t.Fatalf("Expected no error with power-of-two bucket count, got: %v", err)
+	}
+
+	if limiter.numBuckets != 16 {
+		t.Errorf("Expected numBuckets to remain 16, got %d", limiter.numBuckets)
 	}
 }
 
@@ -602,4 +613,46 @@ func containsSubstringHelper(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+// TestCeilPow2 tests the ceilPow2 function
+func TestCeilPow2(t *testing.T) {
+	testCases := []struct {
+		input    uint64
+		expected uint64
+	}{
+		{0, 0},                   // Edge case: 0 rounds to 0
+		{1, 1},                   // Power of 2 stays the same
+		{2, 2},                   // Power of 2 stays the same
+		{3, 4},                   // Round up to next power of 2
+		{4, 4},                   // Power of 2 stays the same
+		{5, 8},                   // Round up to next power of 2
+		{7, 8},                   // Round up to next power of 2
+		{8, 8},                   // Power of 2 stays the same
+		{9, 16},                  // Round up to next power of 2
+		{15, 16},                 // Round up to next power of 2
+		{16, 16},                 // Power of 2 stays the same
+		{17, 32},                 // Round up to next power of 2
+		{31, 32},                 // Round up to next power of 2
+		{32, 32},                 // Power of 2 stays the same
+		{33, 64},                 // Round up to next power of 2
+		{100, 128},               // Round up to next power of 2
+		{127, 128},               // Round up to next power of 2
+		{128, 128},               // Power of 2 stays the same
+		{129, 256},               // Round up to next power of 2
+		{1 << 31, 1 << 31},       // Power of 2 stays the same
+		{(1 << 31) + 1, 1 << 32}, // Round up to next power of 2
+		{1 << 32, 1 << 32},       // Power of 2 stays the same
+		{(1 << 32) + 1, 1 << 33}, // Round up to next power of 2
+		{1 << 63, 1 << 63},       // Power of 2 stays the same
+		{(1 << 63) - 1, 1 << 63}, // Round up to next power of 2 (max possible)
+		// Note: Testing (1<<63)+1 would cause overflow in ceilPow2
+	}
+
+	for _, tc := range testCases {
+		result := ceilPow2(tc.input)
+		if result != tc.expected {
+			t.Errorf("ceilPow2(%d) = %d, expected %d", tc.input, result, tc.expected)
+		}
+	}
 }

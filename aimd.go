@@ -20,7 +20,8 @@ type AIMDTokenBucketLimiter struct {
 // NewAIMDTokenBucketLimiter creates a new AIMD token bucket limiter
 // with the given parameters:
 //
-//   - numBuckets: number of token buckets (must be a power of two)
+//   - numBuckets: number of token buckets (automatically rounded up
+//     to the next power of two for efficient hashing)
 //   - burstCapacity: max number of tokens that can be consumed at
 //     once
 //   - rateMin: minimum token refill rate
@@ -42,17 +43,16 @@ func NewAIMDTokenBucketLimiter(
 	rateMultiplicativeDecrease float64,
 	rateUnit time.Duration,
 ) (*AIMDTokenBucketLimiter, error) {
-	limiter, err := NewTokenBucketLimiter(
+	// no errors currently thrown in NewTokenBucketLimiter(), ignore for
+	// code coverage
+	limiter, _ := NewTokenBucketLimiter(
 		numBuckets,
 		burstCapacity,
 		rateInit,
 		rateUnit,
 	)
-	if err != nil {
-		return nil, err
-	}
 
-	rates := newAtomicSliceInt64(int(numBuckets))
+	rates := newAtomicSliceInt64(int(limiter.numBuckets))
 	for i := range numBuckets {
 		rates.Set(int(i), nanoRate(rateUnit, rateInit))
 	}
