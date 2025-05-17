@@ -8,7 +8,7 @@ A high-performance rate limiting library for Go applications with multiple rate 
 
 ## Features
 
-- **Ultra-Fast**: Core operations complete in 1-15ns with zero allocations
+- **Ultra-Fast**: Core operations execute in single digit *nanoseconds* with zero allocations, enabling hundreds of millions of operations per second
 - **Thread-Safe**: All operations are designed to be thread-safe using optimized atomic operations
 - **Zero External Dependencies**: Relies solely on the Go standard library
 - **Memory Efficient**: Uses compact data structures and optimized storage
