@@ -398,6 +398,9 @@ func BenchmarkTokenBucketTakeToken(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		limiter.TakeToken(id)
+		if i%100 == 0 {
+			tick(time.Millisecond)
+		}
 	}
 }
 
@@ -462,6 +465,7 @@ func BenchmarkTokenBucketTake(b *testing.B) {
 func BenchmarkTokenBucketParallel(b *testing.B) {
 	limiter, _ := DefaultLimiter()
 	ids := GenIDs(1000)
+	tickCounter := int32(0)
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -470,6 +474,9 @@ func BenchmarkTokenBucketParallel(b *testing.B) {
 		for pb.Next() {
 			limiter.TakeToken(ids[i%len(ids)])
 			i++
+			if i%100 == 0 && atomic.AddInt32(&tickCounter, 1)%10 == 0 {
+				tick(time.Millisecond)
+			}
 		}
 	})
 }
@@ -482,6 +489,9 @@ func BenchmarkTokenBucketManyIDs(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		limiter.TakeToken(ids[i%len(ids)])
+		if i%500 == 0 {
+			tick(time.Millisecond)
+		}
 	}
 }
 
@@ -489,12 +499,18 @@ func BenchmarkTokenBucketContention(b *testing.B) {
 	limiter, _ := DefaultLimiter()
 	// Use a single ID to maximize contention on a single bucket
 	id := []byte("high-contention-id")
+	tickCounter := int32(0)
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
+		i := 0
 		for pb.Next() {
 			limiter.TakeToken(id)
+			i++
+			if i%50 == 0 && atomic.AddInt32(&tickCounter, 1)%5 == 0 {
+				tick(time.Millisecond)
+			}
 		}
 	})
 }
@@ -544,6 +560,7 @@ func BenchmarkTokenBucketRealWorldRequestRate(b *testing.B) {
 	// Create a set of IDs representing different API clients
 	numClients := 50
 	clients := GenIDs(numClients)
+	tickCounter := int32(0)
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -555,6 +572,9 @@ func BenchmarkTokenBucketRealWorldRequestRate(b *testing.B) {
 			clientID := counter % numClients
 			counter++
 			limiter.TakeToken(clients[clientID])
+			if counter%200 == 0 && atomic.AddInt32(&tickCounter, 1)%10 == 0 {
+				tick(10 * time.Millisecond)
+			}
 		}
 	})
 }
@@ -565,6 +585,7 @@ func BenchmarkTokenBucketHighContention(b *testing.B) {
 
 	// Only a few IDs to maximize contention
 	ids := GenIDs(5)
+	tickCounter := int32(0)
 
 	// Run with high parallelism to test contention
 	b.SetParallelism(100)
@@ -579,6 +600,11 @@ func BenchmarkTokenBucketHighContention(b *testing.B) {
 			id := counter % len(ids)
 			counter++
 			limiter.TakeToken(ids[id])
+
+			// Occasionally tick the clock to allow token refill
+			if counter%100 == 0 && atomic.AddInt32(&tickCounter, 1)%10 == 0 {
+				tick(time.Millisecond)
+			}
 		}
 	})
 }
@@ -599,6 +625,37 @@ func BenchmarkTokenBucketWithRefill(b *testing.B) {
 		}
 		limiter.TakeToken(id)
 	}
+}
+
+// BenchmarkTokenBucketWithSystemClock benchmarks a token bucket limiter using the
+// actual system clock instead of the mocked time. This provides a more realistic
+// benchmark for production usage where we don't manually tick the clock.
+func BenchmarkTokenBucketWithSystemClock(b *testing.B) {
+	// Save the original nowfn
+	originalNowFn := nowfn
+
+	// Temporarily restore the system time for this benchmark
+	nowfn = time.Now
+
+	// Defer restoring the mock clock for other tests
+	defer func() {
+		nowfn = originalNowFn
+	}()
+
+	// Create a limiter with higher token rate for more realistic benchmark
+	limiter, _ := NewTokenBucketLimiter(numBuckets, burstCapacity, 1000, time.Second)
+	ids := GenIDs(1000)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	b.RunParallel(func(pb *testing.PB) {
+		i := 0
+		for pb.Next() {
+			limiter.TakeToken(ids[i%len(ids)])
+			i++
+		}
+	})
 }
 
 // Helper function to check if a string contains a substring
