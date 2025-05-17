@@ -43,7 +43,7 @@ func NewTokenBucketLimiter(
 	refillRateUnit time.Duration,
 ) (*TokenBucketLimiter, error) {
 	n := ceilPow2(uint64(numBuckets))
-	now := nowfn().UnixNano()
+	now := nowfn()
 	stamp := time56.Unix(now)
 	bucket := newTokenBucket(burstCapacity, stamp)
 	packed := bucket.packed()
@@ -85,7 +85,7 @@ func (t *TokenBucketLimiter) TakeToken(id []byte) bool {
 // refill rate. This is used by Check and is also used by other
 // limiters that wrap this one.
 func (t *TokenBucketLimiter) checkInner(index int, rate int64) bool {
-	now := nowfn().UnixNano()
+	now := nowfn()
 	existing := t.buckets.Get(index)
 	bucket := unpack(existing)
 	refilled := bucket.refill(now, rate, t.burstCapacity)
@@ -97,7 +97,7 @@ func (t *TokenBucketLimiter) checkInner(index int, rate int64) bool {
 // This is used by TakeToken and is also used by other limiters that
 // wrap this one. It uses atomic operations to ensure thread safety.
 func (t *TokenBucketLimiter) takeTokenInner(index int, rate int64) bool {
-	now := nowfn().UnixNano()
+	now := nowfn()
 	for {
 		existing := t.buckets.Get(index)
 		unpacked := unpack(existing)

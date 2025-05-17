@@ -208,29 +208,29 @@ Here are the results from an Apple M1 Pro:
 
 ```
 # Core operations
-BenchmarkTokenBucketCheck-10                    164063450                7.279 ns/op           0 B/op          0 allocs/op
-BenchmarkTokenBucketTakeToken-10                138993206                8.630 ns/op           0 B/op          0 allocs/op
-BenchmarkTokenBucketParallel-10                 757012618                1.576 ns/op           0 B/op          0 allocs/op
-BenchmarkTokenBucketContention-10               612996156                1.953 ns/op           0 B/op          0 allocs/op
-BenchmarkTokenBucketWithRefill-10               138591127                8.699 ns/op           0 B/op          0 allocs/op
+BenchmarkTokenBucketCheck-10                    203429409                5.919 ns/op           0 B/op          0 allocs/op
+BenchmarkTokenBucketTakeToken-10                165718064                7.240 ns/op           0 B/op          0 allocs/op
+BenchmarkTokenBucketParallel-10                 841380494                1.419 ns/op           0 B/op          0 allocs/op
+BenchmarkTokenBucketContention-10               655109293                1.827 ns/op           0 B/op          0 allocs/op
+BenchmarkTokenBucketWithRefill-10               165840525                7.110 ns/op           0 B/op          0 allocs/op
 
 # Bucket creation (different sizes)
-BenchmarkTokenBucketCreateSmall-10              16974966                71.35 ns/op          192 B/op          2 allocs/op
-BenchmarkTokenBucketCreateMedium-10               696861              1781 ns/op            8256 B/op          2 allocs/op
-BenchmarkTokenBucketCreateLarge-10                 50068             24202 ns/op          131137 B/op          2 allocs/op
+BenchmarkTokenBucketCreateSmall-10              16929116                71.00 ns/op          192 B/op          2 allocs/op
+BenchmarkTokenBucketCreateMedium-10               664831              1820 ns/op            8256 B/op          2 allocs/op
+BenchmarkTokenBucketCreateLarge-10                 45537             25471 ns/op          131137 B/op          2 allocs/op
 
 # Internals
-BenchmarkTokenBucketPacked-10                   1000000000               0.3104 ns/op          0 B/op          0 allocs/op
+BenchmarkTokenBucketPacked-10                   1000000000               0.3103 ns/op          0 B/op          0 allocs/op
 BenchmarkTokenBucketUnpack-10                   1000000000               0.3103 ns/op          0 B/op          0 allocs/op
 BenchmarkTokenBucketIndex-10                    265611426                4.510 ns/op           0 B/op          0 allocs/op
 BenchmarkTokenBucketRefill-10                   591397021                2.023 ns/op           0 B/op          0 allocs/op
 
 # Real-world scenarios
-BenchmarkTokenBucketManyIDs-10                  122135487                9.860 ns/op           0 B/op          0 allocs/op
-BenchmarkTokenBucketDynamicID-10                38850352                27.82 ns/op            7 B/op          0 allocs/op
-BenchmarkTokenBucketRealWorldRequestRate-10     821215414                1.431 ns/op           0 B/op          0 allocs/op
-BenchmarkTokenBucketHighContention-10           565276146                2.117 ns/op           0 B/op          0 allocs/op
-BenchmarkTokenBucketWithSystemClock-10          100000000               18.19 ns/op            0 B/op          0 allocs/op
+BenchmarkTokenBucketManyIDs-10                  139485549                8.590 ns/op           0 B/op          0 allocs/op
+BenchmarkTokenBucketDynamicID-10                93835521                12.87 ns/op            0 B/op          0 allocs/op
+BenchmarkTokenBucketRealWorldRequestRate-10     853565757                1.401 ns/op           0 B/op          0 allocs/op
+BenchmarkTokenBucketHighContention-10           579507058                2.068 ns/op           0 B/op          0 allocs/op
+BenchmarkTokenBucketWithSystemClock-10          459682273                2.605 ns/op           0 B/op          0 allocs/op
 ```
 
 ## Advanced Usage
