@@ -227,7 +227,7 @@ BenchmarkTokenBucketRefill-10                   591397021                2.023 n
 
 # Real-world scenarios
 BenchmarkTokenBucketManyIDs-10                  139485549                8.590 ns/op           0 B/op          0 allocs/op
-BenchmarkTokenBucketDynamicID-10                 93835521                12.87 ns/op            0 B/op           0 allocs/op
+BenchmarkTokenBucketDynamicID-10                93835521                12.87 ns/op            0 B/op          0 allocs/op
 BenchmarkTokenBucketRealWorldRequestRate-10     853565757                1.401 ns/op           0 B/op          0 allocs/op
 BenchmarkTokenBucketHighContention-10           579507058                2.068 ns/op           0 B/op          0 allocs/op
 BenchmarkTokenBucketWithSystemClock-10          459682273                2.605 ns/op           0 B/op          0 allocs/op
