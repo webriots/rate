@@ -1,5 +1,3 @@
-//go:build !windows
-
 package time56
 
 import _ "unsafe"
