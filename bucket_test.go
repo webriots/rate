@@ -7,6 +7,7 @@ import (
 	"testing"
 	"testing/quick"
 	"time"
+	"unsafe"
 
 	"github.com/webriots/rate/time56"
 )
@@ -212,7 +213,7 @@ func TestTokenBucketRateAfterBurst(t *testing.T) {
 	attempts := threads * int(duration/sleep)
 	semaphore := make(chan struct{}, threads)
 
-	start := nowfn().UnixNano()
+	start := nowfn()
 
 	for range attempts {
 		wg.Add(1)
@@ -234,7 +235,7 @@ func TestTokenBucketRateAfterBurst(t *testing.T) {
 	wg.Wait()
 
 	// compute elapsed simulated time
-	elapsed := time.Duration(nowfn().UnixNano() - start)
+	elapsed := time.Duration(nowfn() - start)
 	rate := (float64(allowed.Load()) / float64(len(ids))) / elapsed.Seconds()
 
 	if rate < ratePerSecond-0.1 {
@@ -538,15 +539,22 @@ func BenchmarkTokenBucketCreateLarge(b *testing.B) {
 	}
 }
 
+// BenchmarkTokenBucketDynamicID tests the performance of taking tokens with different IDs
 func BenchmarkTokenBucketDynamicID(b *testing.B) {
 	limiter, _ := DefaultLimiter()
+
+	itob := func(i int) []byte {
+		data := *(*[unsafe.Sizeof(i)]byte)(unsafe.Pointer(&i))
+		return data[:]
+	}
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		// Create a new ID for each iteration to test allocation behavior
-		id := []byte(strconv.Itoa(i))
-		limiter.TakeToken(id)
+		limiter.TakeToken(itob(i))
+		if i%500 == 0 {
+			tick(time.Millisecond)
+		}
 	}
 }
 
@@ -635,7 +643,7 @@ func BenchmarkTokenBucketWithSystemClock(b *testing.B) {
 	originalNowFn := nowfn
 
 	// Temporarily restore the system time for this benchmark
-	nowfn = time.Now
+	nowfn = time56.SystemNanoTime
 
 	// Defer restoring the mock clock for other tests
 	defer func() {
