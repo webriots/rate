@@ -209,9 +209,9 @@ Here are the results from an Apple M1 Pro:
 ```
 # Core operations
 BenchmarkTokenBucketCheck-10                    164063450                7.279 ns/op           0 B/op          0 allocs/op
-BenchmarkTokenBucketTakeToken-10                150341438                7.981 ns/op           0 B/op          0 allocs/op
-BenchmarkTokenBucketParallel-10                 1000000000               1.115 ns/op           0 B/op          0 allocs/op
-BenchmarkTokenBucketContention-10               1000000000               1.001 ns/op           0 B/op          0 allocs/op
+BenchmarkTokenBucketTakeToken-10                138993206                8.630 ns/op           0 B/op          0 allocs/op
+BenchmarkTokenBucketParallel-10                 757012618                1.576 ns/op           0 B/op          0 allocs/op
+BenchmarkTokenBucketContention-10               612996156                1.953 ns/op           0 B/op          0 allocs/op
 BenchmarkTokenBucketWithRefill-10               138591127                8.699 ns/op           0 B/op          0 allocs/op
 
 # Bucket creation (different sizes)
@@ -226,10 +226,11 @@ BenchmarkTokenBucketIndex-10                    265611426                4.510 n
 BenchmarkTokenBucketRefill-10                   591397021                2.023 ns/op           0 B/op          0 allocs/op
 
 # Real-world scenarios
-BenchmarkTokenBucketManyIDs-10                  131259206                9.211 ns/op           0 B/op          0 allocs/op
-BenchmarkTokenBucketDynamicID-10                40364173                27.98 ns/op            7 B/op          0 allocs/op
-BenchmarkTokenBucketRealWorldRequestRate-10     1000000000               1.148 ns/op           0 B/op          0 allocs/op
-BenchmarkTokenBucketHighContention-10           1000000000               1.078 ns/op           0 B/op          0 allocs/op
+BenchmarkTokenBucketManyIDs-10                  122135487                9.860 ns/op           0 B/op          0 allocs/op
+BenchmarkTokenBucketDynamicID-10                38850352                27.82 ns/op            7 B/op          0 allocs/op
+BenchmarkTokenBucketRealWorldRequestRate-10     821215414                1.431 ns/op           0 B/op          0 allocs/op
+BenchmarkTokenBucketHighContention-10           565276146                2.117 ns/op           0 B/op          0 allocs/op
+BenchmarkTokenBucketWithSystemClock-10          100000000               18.19 ns/op            0 B/op          0 allocs/op
 ```
 
 ## Advanced Usage
