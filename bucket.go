@@ -12,12 +12,9 @@ import (
 // reduce contention. Each bucket has a fixed capacity and refills at
 // a specified rate.
 type TokenBucketLimiter struct {
-	buckets             atomicSliceUint64 // Array of token buckets
-	numBuckets          uint64            // Number of buckets (pow^2)
-	burstCapacity       uint8             // Maximum tokens per bucket
-	refillIntervalNanos int64             // Nanoseconds per token refill
-	refillRate          float64           // Original refill rate value
-	refillRateUnit      time.Duration     // Time unit for refill rate
+	buckets       atomicSliceUint64 // Array of token buckets
+	burstCapacity uint8             // Maximum tokens per bucket
+	nanosPerToken int64             // Nanoseconds per token refill
 }
 
 // NewTokenBucketLimiter creates a new token bucket rate limiter with
@@ -54,12 +51,9 @@ func NewTokenBucketLimiter(
 	}
 
 	return &TokenBucketLimiter{
-		burstCapacity:       burstCapacity,
-		numBuckets:          n,
-		refillRate:          refillRate,
-		refillRateUnit:      refillRateUnit,
-		refillIntervalNanos: nanoRate(refillRateUnit, refillRate),
-		buckets:             buckets,
+		buckets:       buckets,
+		burstCapacity: burstCapacity,
+		nanosPerToken: nanoRate(refillRateUnit, refillRate),
 	}, nil
 }
 
@@ -69,7 +63,7 @@ func NewTokenBucketLimiter(
 // it. Returns true if a token would be available, false otherwise.
 func (t *TokenBucketLimiter) Check(id []byte) bool {
 	index := t.index(id)
-	return t.checkInner(index, t.refillIntervalNanos)
+	return t.checkInner(index, t.nanosPerToken)
 }
 
 // TakeToken attempts to take a token for the given ID. It returns
@@ -78,7 +72,7 @@ func (t *TokenBucketLimiter) Check(id []byte) bool {
 // called concurrently from multiple goroutines.
 func (t *TokenBucketLimiter) TakeToken(id []byte) bool {
 	index := t.index(id)
-	return t.takeTokenInner(index, t.refillIntervalNanos)
+	return t.takeTokenInner(index, t.nanosPerToken)
 }
 
 // checkInner is an internal method that checks if a token is
@@ -124,7 +118,7 @@ var seed = maphash.MakeSeed()
 // The result is masked to ensure it falls within the range of valid
 // buckets.
 func (t *TokenBucketLimiter) index(id []byte) int {
-	return int(maphash.Bytes(seed, id) & (t.numBuckets - 1))
+	return int(maphash.Bytes(seed, id) & uint64(t.buckets.Len()-1))
 }
 
 // tokenBucket represents a single token bucket with a certain level

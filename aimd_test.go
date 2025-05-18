@@ -68,8 +68,8 @@ func TestAIMDLimiterRoundingToPowerOfTwo(t *testing.T) {
 	}
 
 	// Check that the inner token bucket limiter has 4 buckets (next power of two after 3)
-	if limiter.limiter.numBuckets != 4 {
-		t.Errorf("Expected numBuckets to be rounded up to 4, got %d", limiter.limiter.numBuckets)
+	if limiter.limiter.buckets.Len() != 4 {
+		t.Errorf("Expected numBuckets to be rounded up to 4, got %d", limiter.limiter.buckets.Len())
 	}
 }
 
