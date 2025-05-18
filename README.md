@@ -4,7 +4,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/webriots/rate)](https://goreportcard.com/report/github.com/webriots/rate)
 [![Coverage Status](https://coveralls.io/repos/github/webriots/rate/badge.svg?branch=main)](https://coveralls.io/github/webriots/rate?branch=main)
 
-A high-performance rate limiting library for Go applications with multiple rate limiting strategies.
+A high-performance rate limiter library for Go applications with multiple rate limiting strategies.
 
 ## Features
 
