@@ -35,6 +35,11 @@ func TestAtomicSliceBasic(t *testing.T) {
 	if got := slice.Get(1); got != 100 {
 		t.Errorf("After failed CompareAndSwap: got %d, should still be 100", got)
 	}
+
+	// Check Len
+	if got := slice.Len(); got != 3 {
+		t.Errorf("Len: got %d, want 3", got)
+	}
 }
 
 // TestAtomicSliceUint64Basic verifies basic operations for atomicSliceUint64.
@@ -69,5 +74,10 @@ func TestAtomicSliceUint64Basic(t *testing.T) {
 	}
 	if got := slice.Get(1); got != 100 {
 		t.Errorf("After failed CompareAndSwap: got %d, should still be 100", got)
+	}
+
+	// Check Len
+	if got := slice.Len(); got != 3 {
+		t.Errorf("Len: got %d, want 3", got)
 	}
 }
