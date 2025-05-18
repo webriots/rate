@@ -53,9 +53,10 @@ func NewAIMDTokenBucketLimiter(
 		rateUnit,
 	)
 
+	rate := nanoRate(rateUnit, rateInit)
 	rates := newAtomicSliceInt64(limiter.buckets.Len())
 	for i := range rates.Len() {
-		rates.Set(i, nanoRate(rateUnit, rateInit))
+		rates.Set(i, rate)
 	}
 
 	return &AIMDTokenBucketLimiter{
