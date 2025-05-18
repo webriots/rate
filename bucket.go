@@ -40,9 +40,7 @@ func NewTokenBucketLimiter(
 	refillRateUnit time.Duration,
 ) (*TokenBucketLimiter, error) {
 	n := ceilPow2(uint64(numBuckets))
-	now := nowfn()
-	stamp := time56.Unix(now)
-	bucket := newTokenBucket(burstCapacity, stamp)
+	bucket := newTokenBucket(burstCapacity, time56.Unix(nowfn()))
 	packed := bucket.packed()
 
 	buckets := newAtomicSliceUint64(int(n))
@@ -62,8 +60,7 @@ func NewTokenBucketLimiter(
 // checking if an operation would be rate limited before attempting
 // it. Returns true if a token would be available, false otherwise.
 func (t *TokenBucketLimiter) Check(id []byte) bool {
-	index := t.index(id)
-	return t.checkInner(index, t.nanosPerToken)
+	return t.checkInner(t.index(id), t.nanosPerToken)
 }
 
 // TakeToken attempts to take a token for the given ID. It returns
@@ -71,8 +68,7 @@ func (t *TokenBucketLimiter) Check(id []byte) bool {
 // should be rate limited. This method is thread-safe and can be
 // called concurrently from multiple goroutines.
 func (t *TokenBucketLimiter) TakeToken(id []byte) bool {
-	index := t.index(id)
-	return t.takeTokenInner(index, t.nanosPerToken)
+	return t.takeTokenInner(t.index(id), t.nanosPerToken)
 }
 
 // checkInner is an internal method that checks if a token is
@@ -80,10 +76,9 @@ func (t *TokenBucketLimiter) TakeToken(id []byte) bool {
 // refill rate. This is used by Check and is also used by other
 // limiters that wrap this one.
 func (t *TokenBucketLimiter) checkInner(index int, rate int64) bool {
-	now := nowfn()
 	existing := t.buckets.Get(index)
 	unpacked := unpack(existing)
-	refilled := unpacked.refill(now, rate, t.burstCapacity)
+	refilled := unpacked.refill(nowfn(), rate, t.burstCapacity)
 	return refilled.level > 0
 }
 
@@ -97,17 +92,17 @@ func (t *TokenBucketLimiter) takeTokenInner(index int, rate int64) bool {
 		existing := t.buckets.Get(index)
 		unpacked := unpack(existing)
 		refilled := unpacked.refill(now, rate, t.burstCapacity)
-		updated, taken := refilled.take()
+		consumed, ok := refilled.take()
 
-		if updated != unpacked && !t.buckets.CompareAndSwap(
+		if consumed != unpacked && !t.buckets.CompareAndSwap(
 			index,
 			existing,
-			updated.packed(),
+			consumed.packed(),
 		) {
 			continue
 		}
 
-		return taken
+		return ok
 	}
 }
 
@@ -162,8 +157,7 @@ func (b tokenBucket) refill(nowNS, rate int64, maxLevel uint8) tokenBucket {
 	}
 
 	b.level = level
-	remainder := elapsed % rate
-	b.stamp = now.Sub(remainder)
+	b.stamp = now.Sub(elapsed % rate)
 
 	return b
 }
