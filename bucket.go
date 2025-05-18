@@ -82,8 +82,8 @@ func (t *TokenBucketLimiter) TakeToken(id []byte) bool {
 func (t *TokenBucketLimiter) checkInner(index int, rate int64) bool {
 	now := nowfn()
 	existing := t.buckets.Get(index)
-	bucket := unpack(existing)
-	refilled := bucket.refill(now, rate, t.burstCapacity)
+	unpacked := unpack(existing)
+	refilled := unpacked.refill(now, rate, t.burstCapacity)
 	return refilled.level > 0
 }
 
@@ -157,11 +157,13 @@ func (b tokenBucket) refill(nowNS, rate int64, maxLevel uint8) tokenBucket {
 		level = b.level + uint8(tokens)
 	}
 
-	if b.level != level {
-		remainder := elapsed % rate
-		b.stamp = now.Sub(remainder)
-		b.level = level
+	if b.level == level {
+		return b
 	}
+
+	b.level = level
+	remainder := elapsed % rate
+	b.stamp = now.Sub(remainder)
 
 	return b
 }
