@@ -44,9 +44,9 @@ func NewTokenBucketLimiter(
 	stamp := time56.Unix(now)
 	bucket := newTokenBucket(burstCapacity, stamp)
 	packed := bucket.packed()
-	buckets := newAtomicSliceUint64(int(n))
 
-	for i := range n {
+	buckets := newAtomicSliceUint64(int(n))
+	for i := range buckets.Len() {
 		buckets.Set(int(i), packed)
 	}
 
