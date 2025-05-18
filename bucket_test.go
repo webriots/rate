@@ -31,8 +31,8 @@ func TestTokenBucketRoundingToPowerOfTwo(t *testing.T) {
 	}
 
 	// Should be rounded up to 4 (next power of two after 3)
-	if limiter.numBuckets != 4 {
-		t.Errorf("Expected numBuckets to be rounded up to 4, got %d", limiter.numBuckets)
+	if limiter.buckets.Len() != 4 {
+		t.Errorf("Expected numBuckets to be rounded up to 4, got %d", limiter.buckets.Len())
 	}
 
 	// Test with a power of two (should remain unchanged)
@@ -41,8 +41,8 @@ func TestTokenBucketRoundingToPowerOfTwo(t *testing.T) {
 		t.Fatalf("Expected no error with power-of-two bucket count, got: %v", err)
 	}
 
-	if limiter.numBuckets != 16 {
-		t.Errorf("Expected numBuckets to remain 16, got %d", limiter.numBuckets)
+	if limiter.buckets.Len() != 16 {
+		t.Errorf("Expected numBuckets to remain 16, got %d", limiter.buckets.Len())
 	}
 }
 
@@ -53,7 +53,7 @@ func TestTokenBucketRefill(t *testing.T) {
 	}
 
 	fullBucket := newTokenBucket(burstCapacity, 0)
-	result := fullBucket.refill(1<<40, limiter.refillIntervalNanos, burstCapacity)
+	result := fullBucket.refill(1<<40, limiter.nanosPerToken, burstCapacity)
 
 	if fullBucket != result {
 		t.Errorf("refill() = %v, want %v", result, fullBucket)
@@ -83,7 +83,7 @@ func TestTokenBucketRefillOld(t *testing.T) {
 	}
 
 	old := tokenBucket{}
-	refilled := old.refill(1<<40, limiter.refillIntervalNanos, limiter.burstCapacity)
+	refilled := old.refill(1<<40, limiter.nanosPerToken, limiter.burstCapacity)
 
 	if refilled.level != burstCapacity {
 		t.Errorf("refilled.level = %d, want %d", refilled.level, burstCapacity)
@@ -101,8 +101,8 @@ func TestTokenBucketAddSingleToken(t *testing.T) {
 	}
 
 	f := func(start int64) bool {
-		end := start + limiter.refillIntervalNanos
-		return newTokenBucket(0, time56.Unix(start)).refill(end, limiter.refillIntervalNanos, limiter.burstCapacity).level == 1
+		end := start + limiter.nanosPerToken
+		return newTokenBucket(0, time56.Unix(start)).refill(end, limiter.nanosPerToken, limiter.burstCapacity).level == 1
 	}
 
 	if err := quick.Check(f, nil); err != nil {
@@ -117,8 +117,8 @@ func TestTokenBucketNoTokenRefill(t *testing.T) {
 	}
 
 	f := func(start int64) bool {
-		end := start + limiter.refillIntervalNanos - 1
-		return newTokenBucket(0, time56.Unix(start)).refill(end, limiter.refillIntervalNanos, limiter.burstCapacity).level == 0
+		end := start + limiter.nanosPerToken - 1
+		return newTokenBucket(0, time56.Unix(start)).refill(end, limiter.nanosPerToken, limiter.burstCapacity).level == 0
 	}
 
 	if err := quick.Check(f, nil); err != nil {
@@ -333,9 +333,9 @@ func TestTokenBucketCheckInner(t *testing.T) {
 	index := limiter.index(id)
 
 	// Different rates to test
-	fastRate := limiter.refillIntervalNanos / 2 // Faster refill
-	normalRate := limiter.refillIntervalNanos   // Normal refill
-	slowRate := limiter.refillIntervalNanos * 2 // Slower refill
+	fastRate := limiter.nanosPerToken / 2 // Faster refill
+	normalRate := limiter.nanosPerToken   // Normal refill
+	slowRate := limiter.nanosPerToken * 2 // Slower refill
 
 	// Initially all should return true
 	if !limiter.checkInner(index, fastRate) {
@@ -445,7 +445,7 @@ func BenchmarkTokenBucketRefill(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		bucket.refill(now, limiter.refillIntervalNanos, limiter.burstCapacity)
+		bucket.refill(now, limiter.nanosPerToken, limiter.burstCapacity)
 	}
 }
 

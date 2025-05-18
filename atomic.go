@@ -29,6 +29,11 @@ func (a atomicSliceInt64) CompareAndSwap(index int, old, new int64) bool {
 	return atomic.CompareAndSwapInt64(&a[index], old, new)
 }
 
+// Len returns the length of the atomic slice.
+func (a atomicSliceInt64) Len() int {
+	return len(a)
+}
+
 // atomicSliceUint64 is a slice of uint64 values with atomic
 // operations. It provides thread-safe access to elements in the
 // slice.
@@ -55,4 +60,9 @@ func (a atomicSliceUint64) Set(index int, value uint64) {
 // swap occurred.
 func (a atomicSliceUint64) CompareAndSwap(index int, old, new uint64) bool {
 	return atomic.CompareAndSwapUint64(&a[index], old, new)
+}
+
+// Len returns the length of the atomic slice.
+func (a atomicSliceUint64) Len() int {
+	return len(a)
 }
