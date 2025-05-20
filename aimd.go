@@ -9,12 +9,13 @@ import "time"
 // reduces rates when encountering failures or congestion. This is
 // similar to the congestion control algorithm used in TCP.
 type AIMDTokenBucketLimiter struct {
-	limiter *TokenBucketLimiter
-	rates   atomicSliceInt64 // Per-bucket rates in tokens per second
-	rateMin int64            // Minimum rate (tokens per unit)
-	rateMax int64            // Maximum rate (tokens per unit)
-	rateAI  int64            // Additive increase (tokens per unit)
-	rateMD  float64          // Multiplicative decrease (multiplier)
+	limiter  *TokenBucketLimiter
+	rates    atomicSliceInt64 // Per-bucket rates in tokens per second
+	rateMin  int64            // Minimum rate (tokens per unit)
+	rateMax  int64            // Maximum rate (tokens per unit)
+	rateAI   int64            // Additive increase (tokens per unit)
+	rateMD   float64          // Multiplicative decrease (multiplier)
+	rateUnit time.Duration    // Time unit for rate calculations
 }
 
 // NewAIMDTokenBucketLimiter creates a new AIMD token bucket limiter
@@ -60,12 +61,13 @@ func NewAIMDTokenBucketLimiter(
 	}
 
 	return &AIMDTokenBucketLimiter{
-		limiter: limiter,
-		rates:   rates,
-		rateMin: nanoRate(rateUnit, rateMin),
-		rateMax: nanoRate(rateUnit, rateMax),
-		rateAI:  nanoRate(rateUnit, rateAdditiveIncrease),
-		rateMD:  rateMultiplicativeDecrease,
+		limiter:  limiter,
+		rates:    rates,
+		rateMin:  nanoRate(rateUnit, rateMin),
+		rateMax:  nanoRate(rateUnit, rateMax),
+		rateAI:   nanoRate(rateUnit, rateAdditiveIncrease),
+		rateMD:   rateMultiplicativeDecrease,
+		rateUnit: rateUnit,
 	}, nil
 }
 
@@ -97,12 +99,15 @@ func (a *AIMDTokenBucketLimiter) Check(id []byte) bool {
 // successful operations. The rate is increased by rateAI up to the
 // maximum rate (rateMax). This method is thread-safe and uses atomic
 // operations to ensure consistency.
-func (a *AIMDTokenBucketLimiter) IncreaseRate(id []byte) {
+//
+// Returns the current rate (in tokens per rateUnit) for the bucket
+// before the increase was applied.
+func (a *AIMDTokenBucketLimiter) IncreaseRate(id []byte) float64 {
 	index := a.limiter.index(id)
 	for {
 		rate := a.rates.Get(index)
 		if rate == a.rateMax {
-			return
+			return unitRate(a.rateUnit, rate)
 		}
 
 		next := a.rateMax
@@ -111,11 +116,11 @@ func (a *AIMDTokenBucketLimiter) IncreaseRate(id []byte) {
 		}
 
 		if rate == next {
-			return
+			return unitRate(a.rateUnit, rate)
 		}
 
 		if a.rates.CompareAndSwap(index, rate, next) {
-			return
+			return unitRate(a.rateUnit, rate)
 		}
 	}
 }
@@ -127,21 +132,35 @@ func (a *AIMDTokenBucketLimiter) IncreaseRate(id []byte) {
 // rateMD, but will not go below the minimum rate (rateMin). This
 // method is thread-safe and uses atomic operations to ensure
 // consistency.
-func (a *AIMDTokenBucketLimiter) DecreaseRate(id []byte) {
+//
+// Returns the current rate (in tokens per rateUnit) for the bucket
+// before the decrease was applied.
+func (a *AIMDTokenBucketLimiter) DecreaseRate(id []byte) float64 {
 	index := a.limiter.index(id)
 	for {
 		rate := a.rates.Get(index)
 		if rate == a.rateMin {
-			return
+			return unitRate(a.rateUnit, rate)
 		}
 
 		next := max(int64(float64(rate)/a.rateMD), a.rateMin)
 		if rate == next {
-			return
+			return unitRate(a.rateUnit, rate)
 		}
 
 		if a.rates.CompareAndSwap(index, rate, next) {
-			return
+			return unitRate(a.rateUnit, rate)
 		}
 	}
+}
+
+// Rate returns the current token rate for the bucket associated with
+// the given ID. The rate is expressed in tokens per rateUnit (e.g.,
+// tokens per second if rateUnit is time.Second). This method is
+// thread-safe and can be called concurrently from multiple
+// goroutines.
+func (a *AIMDTokenBucketLimiter) Rate(id []byte) float64 {
+	index := a.limiter.index(id)
+	rate := a.rates.Get(index)
+	return unitRate(a.rateUnit, rate)
 }
