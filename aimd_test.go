@@ -419,10 +419,63 @@ func TestAIMDCheckAfterConsumption(t *testing.T) {
 	}
 }
 
-func sec(rate int64) float64 {
-	return unitRate(time.Second, rate)
+// TestAIMDRate tests the Rate method returns the correct token rate.
+func TestAIMDRate(t *testing.T) {
+	limiter, err := DefaultAIMDLimiter()
+	if err != nil {
+		t.Fatalf("Failed to create limiter: %v", err)
+	}
+
+	id := []byte("rate-test")
+	index := limiter.limiter.index(id)
+
+	// Check initial rate
+	initialRateExpected := aimdInitRate
+	initialRateActual := limiter.Rate(id)
+	if math.Abs(initialRateActual-initialRateExpected) > 0.001 {
+		t.Errorf("Initial rate incorrect: got %f, want %f", initialRateActual, initialRateExpected)
+	}
+
+	// Set a custom rate and check that it's reported correctly
+	customRate := 42.0
+	limiter.rates.Set(index, nanoRate(time.Second, customRate))
+
+	rateActual := limiter.Rate(id)
+	if math.Abs(rateActual-customRate) > 0.001 {
+		t.Errorf("Rate incorrect after setting: got %f, want %f", rateActual, customRate)
+	}
+
+	// Increase rate and check both the return value and that Rate method reports the increase
+	returnedRate := limiter.IncreaseRate(id)
+	increasedRateExpected := customRate + aimdIncreaseByRate
+	increasedRateActual := limiter.Rate(id)
+
+	// Verify IncreaseRate returned the previous rate
+	if math.Abs(returnedRate-customRate) > 0.001 {
+		t.Errorf("IncreaseRate returned incorrect rate: got %f, want %f", returnedRate, customRate)
+	}
+
+	// Verify new rate is correctly reported by Rate()
+	if math.Abs(increasedRateActual-increasedRateExpected) > 0.001 {
+		t.Errorf("Rate incorrect after increase: got %f, want %f", increasedRateActual, increasedRateExpected)
+	}
+
+	// Decrease rate and check both the return value and that Rate method reports the decrease
+	returnedRate = limiter.DecreaseRate(id)
+	decreasedRateExpected := increasedRateExpected / aimdDecreaseByFactor
+	decreasedRateActual := limiter.Rate(id)
+
+	// Verify DecreaseRate returned the previous rate
+	if math.Abs(returnedRate-increasedRateExpected) > 0.001 {
+		t.Errorf("DecreaseRate returned incorrect rate: got %f, want %f", returnedRate, increasedRateExpected)
+	}
+
+	// Verify new rate is correctly reported by Rate()
+	if math.Abs(decreasedRateActual-decreasedRateExpected) > 0.001 {
+		t.Errorf("Rate incorrect after decrease: got %f, want %f", decreasedRateActual, decreasedRateExpected)
+	}
 }
 
-func unitRate(refillRateUnit time.Duration, refillRateNanos int64) float64 {
-	return float64(refillRateNanos) / float64(refillRateUnit.Nanoseconds())
+func sec(rate int64) float64 {
+	return unitRate(time.Second, rate)
 }

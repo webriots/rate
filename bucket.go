@@ -195,6 +195,14 @@ func nanoRate(refillRateUnit time.Duration, refillRate float64) int64 {
 	return int64(float64(refillRateUnit.Nanoseconds()) * refillRate)
 }
 
+// unitRate converts a rate in nanoseconds per token back to tokens
+// per unit. This is the inverse operation of nanoRate and is used to
+// provide human-readable rate values for APIs returning rate
+// information.
+func unitRate(refillRateUnit time.Duration, refillRateNanos int64) float64 {
+	return float64(refillRateNanos) / float64(refillRateUnit.Nanoseconds())
+}
+
 // maxPow2 defines the maximum power of two value that ceilPow2 will
 // return. This prevents potential overflow issues when rounding up
 // values close to the maximum uint64 value. Using 2^62 allows safe
