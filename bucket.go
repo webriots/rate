@@ -147,13 +147,10 @@ func (b tokenBucket) refill(nowNS, rate int64, maxLevel uint8) tokenBucket {
 		return b
 	}
 
-	level := maxLevel
 	if avail := maxLevel - b.level; tokens < int64(avail) {
-		level = b.level + uint8(tokens)
-	}
-
-	if b.level != level {
-		b.level = level
+		b.level += uint8(tokens)
+	} else {
+		b.level = maxLevel
 	}
 
 	if remainder := elapsed % rate; remainder > 0 {
