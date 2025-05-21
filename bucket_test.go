@@ -53,7 +53,7 @@ func TestTokenBucketRefill(t *testing.T) {
 	}
 
 	fullBucket := newTokenBucket(burstCapacity, 0)
-	result := fullBucket.refill(1<<40, limiter.nanosPerToken, burstCapacity)
+	result := fullBucket.refill(0, limiter.nanosPerToken, burstCapacity)
 
 	if fullBucket != result {
 		t.Errorf("refill() = %v, want %v", result, fullBucket)
