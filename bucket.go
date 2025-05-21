@@ -152,12 +152,15 @@ func (b tokenBucket) refill(nowNS, rate int64, maxLevel uint8) tokenBucket {
 		level = b.level + uint8(tokens)
 	}
 
-	if b.level == level {
-		return b
+	if b.level != level {
+		b.level = level
 	}
 
-	b.level = level
-	b.stamp = now.Sub(elapsed % rate)
+	if remainder := elapsed % rate; remainder > 0 {
+		b.stamp = now.Sub(remainder)
+	} else {
+		b.stamp = now
+	}
 
 	return b
 }
