@@ -1,6 +1,10 @@
 package rate
 
-import "time"
+import (
+	"fmt"
+	"math"
+	"time"
+)
 
 // AIMDTokenBucketLimiter wraps a TokenBucketLimiter to implement
 // Additive Increase Multiplicative Decrease (AIMD) rate limiting.
@@ -43,17 +47,38 @@ type AIMDTokenBucketLimiter struct {
 //
 // Input validation:
 //
-//   - If rateInit or rateUnit parameters are invalid, returns the
-//     same error that would be returned by NewTokenBucketLimiter
-//   - If refillRate is not a positive, finite number (e.g., negative,
+//   - If rateInit is not a positive, finite number (e.g., negative,
 //     zero, NaN, or infinity), returns an error with message
 //     "refillRate must be a positive, finite number"
-//   - If refillRateUnit is not a positive duration, returns an error
+//   - If rateUnit is not a positive duration, returns an error
 //     with message "refillRateUnit must represent a positive
 //     duration"
-//   - If the product of refillRate and refillRateUnit (in
-//     nanoseconds) exceeds maximum representable value, returns an
-//     error with message "refillRate per duration is too large"
+//   - If the product of rateInit and rateUnit (in nanoseconds)
+//     exceeds maximum representable value, returns an error with
+//     message "refillRate per duration is too large"
+//   - If rateMin is not a positive, finite number (e.g., negative,
+//     zero, NaN, or infinity), returns an error with message
+//     "rateMin must be a positive, finite number"
+//   - If rateMax is not a positive, finite number (e.g., negative,
+//     zero, NaN, or infinity), returns an error with message
+//     "rateMax must be a positive, finite number"
+//   - If rateMin is greater than rateMax, returns an error with
+//     message "rateMin must be less than equal to rateMax"
+//   - If rateInit is not between rateMin and rateMax (inclusive),
+//     returns an error with message "rateInit must be a positive,
+//     finite number between rateMin and rateMax"
+//   - If rateAdditiveIncrease is not a positive, finite number
+//     (e.g., negative, zero, NaN, or infinity), returns an error
+//     with message "rateAdditiveIncrease must be a positive, finite
+//     number"
+//   - If rateMultiplicativeDecrease is not a finite number greater
+//     than or equal to 1.0 (e.g., NaN, infinity, or less than 1.0),
+//     returns an error with message "rateMultiplicativeDecrease must
+//     be a finite number greater than or equal to 1.0"
+//   - If the product of rateMin, rateMax, or rateAdditiveIncrease
+//     with rateUnit (in nanoseconds) exceeds maximum representable
+//     value, returns an error with message "[parameter] per duration
+//     is too large"
 func NewAIMDTokenBucketLimiter(
 	numBuckets uint,
 	burstCapacity uint8,
@@ -72,6 +97,46 @@ func NewAIMDTokenBucketLimiter(
 	)
 	if err != nil {
 		return nil, err
+	}
+
+	if math.IsNaN(rateMin) || math.IsInf(rateMin, 0) || rateMin <= 0 {
+		return nil, fmt.Errorf("rateMin must be a positive, finite number")
+	}
+
+	if math.IsNaN(rateMax) || math.IsInf(rateMax, 0) || rateMax <= 0 {
+		return nil, fmt.Errorf("rateMax must be a positive, finite number")
+	}
+
+	if rateMin > rateMax {
+		return nil, fmt.Errorf("rateMin must be less than equal to rateMax")
+	}
+
+	if math.IsNaN(rateInit) || math.IsInf(rateInit, 0) || rateInit < rateMin || rateInit > rateMax {
+		return nil, fmt.Errorf("rateInit must be a positive, finite number between rateMin and rateMax")
+	}
+
+	if math.IsNaN(rateAdditiveIncrease) || math.IsInf(rateAdditiveIncrease, 0) || rateAdditiveIncrease <= 0 {
+		return nil, fmt.Errorf("rateAdditiveIncrease must be a positive, finite number")
+	}
+
+	if math.IsNaN(rateMultiplicativeDecrease) || math.IsInf(rateMultiplicativeDecrease, 0) || rateMultiplicativeDecrease < 1.0 {
+		return nil, fmt.Errorf("rateMultiplicativeDecrease must be a finite number greater than or equal to 1.0")
+	}
+
+	rateParams := []struct {
+		value float64
+		name  string
+	}{
+		{rateMin, "rateMin"},
+		{rateMax, "rateMax"},
+		{rateAdditiveIncrease, "rateAdditiveIncrease"},
+	}
+
+	rateUnitNanos := float64(rateUnit.Nanoseconds()) // validated by NewTokenBucketLimiter
+	for _, rateParam := range rateParams {
+		if rateUnitNanos > math.MaxFloat64/rateParam.value {
+			return nil, fmt.Errorf("%s per duration is too large", rateParam.name)
+		}
 	}
 
 	rate := nanoRate(rateUnit, rateInit)
