@@ -154,19 +154,21 @@ limiter, err := rate.NewTokenBucketLimiter(
 The token bucket algorithm uses a simple metaphor of a bucket that holds tokens:
 
 ```
-┌─────────────────────────┐
-│                         │
-│  ┌───┐  ┌───┐  ┌───┐    │
-│  │ T │  │ T │  │ T │    │ ← Tokens in bucket (current: 3)
-│  └───┘  └───┘  └───┘    │
-│                         │ ← Empty space (burst capacity: 10)
-│                         │
-└─────────────────────────┘
+┌─────────────────────────────────────┐
+│                                     │
+│  ┌───┐  ┌───┐  ┌───┐  ┌   ┐  ┌   ┐  │
+│  │ T │  │ T │  │ T │  │   │  │   │  │
+│  └───┘  └───┘  └───┘  └   ┘  └   ┘  │
+│    ↑      ↑      ↑                  │
+│  avail  avail  avail                │
+│                                     │
+│  Available: 3 tokens │ Capacity: 5  │
+└─────────────────────────────────────┘
         │
         │ Refill rate: 100 tokens/second
         ▼
     ┌───┐  ┌───┐
-    │ T │  │ T │  ...       ← New tokens added at constant rate
+    │ T │  │ T │  ...  ← New tokens added at constant rate
     └───┘  └───┘
 ```
 
