@@ -149,6 +149,54 @@ limiter, err := rate.NewTokenBucketLimiter(
 )
 ```
 
+#### Token Bucket Algorithm Explained
+
+The token bucket algorithm uses a simple metaphor of a bucket that holds tokens:
+
+```
+┌─────────────────────────┐
+│                         │
+│  ┌───┐  ┌───┐  ┌───┐    │
+│  │ T │  │ T │  │ T │    │ ← Tokens in bucket (current: 3)
+│  └───┘  └───┘  └───┘    │
+│                         │ ← Empty space (burst capacity: 10)
+│                         │
+└─────────────────────────┘
+        │
+        │ Refill rate: 100 tokens/second
+        ▼
+    ┌───┐  ┌───┐
+    │ T │  │ T │  ...       ← New tokens added at constant rate
+    └───┘  └───┘
+```
+
+**How it works:**
+
+1. **Bucket Initialization**:
+   - Each bucket starts with `burstCapacity` tokens (full)
+   - A timestamp is recorded when the bucket is created
+
+2. **Token Consumption**:
+   - When a request arrives, it attempts to take a token
+   - If a token is available, it's removed from the bucket and the request proceeds
+   - If no tokens are available, the request is rate-limited
+
+3. **Token Refill**:
+   - Tokens are conceptually added to the bucket at a constant rate (`refillRate` per `refillRateUnit`)
+   - In practice, the refill is calculated lazily only when tokens are requested
+   - The formula is: `refill = (currentTime - lastUpdateTime) * refillRate`
+   - Tokens are never added beyond the maximum `burstCapacity`
+
+4. **Burst Handling**:
+   - The bucket can temporarily allow higher rates up to `burstCapacity`
+   - This accommodates traffic spikes while maintaining a long-term average rate
+
+**Implementation Details:**
+
+- This library uses a sharded approach with multiple buckets to reduce contention
+- Each request ID is consistently hashed to the same bucket
+- The bucket stores both token count and timestamp in a single uint64 for efficiency
+
 #### Parameters:
 
 - `numBuckets`: Number of token buckets (automatically rounded up to the nearest power of two if not already a power of two)
@@ -172,6 +220,66 @@ limiter, err := rate.NewAIMDTokenBucketLimiter(
     rateUnit,                  // Time unit for rate calculations
 )
 ```
+
+#### AIMD Algorithm Explained
+
+The AIMD algorithm dynamically adjusts token refill rates based on success or failure feedback, similar to how TCP adjusts its congestion window:
+
+```
+   Rate
+   │
+   │
+   │
+   │
+rateMax ─────────────────────────────────────────
+   │                       ╱       │           ╱
+   │                     ╱         │         ╱
+   │                   ╱           │       ╱
+   │                 ╱             │     ╱
+   │               ╱               │   ╱
+   │             ╱                 │ ╱
+   │           ╱                   ▼ Multiplicative
+   │         ╱                       Decrease
+   │       ╱                         (rate / 2)
+   │     ╱
+   │   ╱
+   │ ╱
+rateInit ─
+   │ ↑
+   │ Additive
+   │ Increase
+   │ (+1)
+rateMin ─────────────────────────────────────────
+   │
+   └─────────────────────────────────────────────► Time
+              Success           Failure
+```
+
+**How it works:**
+
+1. **Initialization**:
+   - Each bucket starts with a rate of `rateInit` tokens per time unit
+   - Token buckets are created with `burstCapacity` tokens
+
+2. **Adaptive Rate Adjustment**:
+   - When operations succeed, the rate increases linearly by `rateAdditiveIncrease`
+     - `newRate = currentRate + rateAdditiveIncrease`
+   - When operations fail, the rate decreases multiplicatively by `rateMultiplicativeDecrease`
+     - `newRate = currentRate / rateMultiplicativeDecrease`
+   - Rates are bounded between `rateMin` (lower bound) and `rateMax` (upper bound)
+
+3. **Practical Applications**:
+   - Gracefully adapts to changing capacity of backend systems
+   - Quickly backs off when systems are overloaded (multiplicative decrease)
+   - Slowly probes for increased capacity when systems are healthy (additive increase)
+   - Maintains stability even under varying load conditions
+
+**Implementation Details:**
+
+- Each ID has its own dedicated rate that adjusts independently
+- The actual token bucket mechanics remain the same as TokenBucketLimiter
+- Rate changes are applied atomically using lock-free operations
+- Rate information is stored alongside token information in the bucket
 
 #### Parameters:
 
@@ -388,6 +496,42 @@ The library is designed with these principles in mind:
 3. **Memory Efficiency**: Uses packed representation and custom implementations for efficient storage
 4. **Simplicity**: Provides simple interfaces for common rate limiting patterns
 5. **Flexibility**: Multiple strategies to handle different rate limiting requirements
+
+## Thread-Safety Guarantees
+
+The `rate` package is designed for high-concurrency environments with the following guarantees:
+
+### Atomic Operations
+
+- All token bucket operations use lock-free atomic operations
+- Token count updates and timestamp operations use atomic Compare-And-Swap (CAS)
+- No mutexes or traditional locks are used, eliminating lock contention
+- Bucket selection uses thread-safe hash calculations to map IDs to buckets
+
+### Concurrent Access Patterns
+
+- **Read Operations**: Multiple goroutines can safely check token availability concurrently
+- **Write Operations**: Multiple goroutines can safely take tokens and update rates concurrently
+- **Creation**: Limiter creation is thread-safe and can be performed from any goroutine
+- **Refill**: Token refill happens automatically during token operations without requiring explicit locks
+
+### Memory Ordering
+
+- All atomic operations enforce appropriate memory ordering guarantees
+- Reads and writes are properly synchronized across multiple cores/CPUs
+- Operations follow Go's memory model for concurrent access
+
+### Contention Handling
+
+- Multiple buckets distribute load to minimize atomic operation contention
+- Rate updates for one ID don't block operations on other IDs
+- The implementation uses a sharded approach where each ID maps to a specific bucket
+
+### Limitations
+
+- The library doesn't guarantee perfect fairness across all IDs
+- When multiple IDs hash to the same bucket (collision), they share the same rate limit
+- Very high contention on a single ID might experience CAS retry loops
 
 ## Contributing
 
