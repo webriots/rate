@@ -281,7 +281,7 @@ func TestTokenBucketRateOnlyAfterBurst(t *testing.T) {
 		t.Fatalf("Failed to create limiter: %v", err)
 	}
 
-	ids := GenIDs(100)
+	ids := GenIDs(limiter, 100)
 
 	for range burstCapacity {
 		for _, id := range ids {
@@ -304,7 +304,7 @@ func TestTokenBucketRateAfterBurst(t *testing.T) {
 		t.Fatalf("Failed to create limiter: %v", err)
 	}
 
-	ids := GenIDs(100)
+	ids := GenIDs(limiter, 100)
 
 	for range burstCapacity {
 		for _, id := range ids {
@@ -366,11 +366,32 @@ func TestTokenBucketRateAfterBurst(t *testing.T) {
 	}
 }
 
-func GenIDs(count int) [][]byte {
-	ids := make([][]byte, count)
-	for i := range ids {
-		ids[i] = []byte(strconv.Itoa(i))
+func GenIDs(limiter *TokenBucketLimiter, count int) [][]byte {
+	ids := make([][]byte, 0, count)
+	seen := make(map[int]bool)
+
+	// Try sequential numbers first
+	for i := 0; len(ids) < count && i < count*10; i++ {
+		id := []byte(strconv.Itoa(i))
+		index := limiter.index(id)
+		if !seen[index] {
+			seen[index] = true
+			ids = append(ids, id)
+		}
 	}
+
+	// If we still need more IDs, try with prefixes
+	for prefix := "a"; len(ids) < count; prefix += "a" {
+		for i := 0; len(ids) < count && i < 1000; i++ {
+			id := []byte(prefix + strconv.Itoa(i))
+			index := limiter.index(id)
+			if !seen[index] {
+				seen[index] = true
+				ids = append(ids, id)
+			}
+		}
+	}
+
 	return ids
 }
 
@@ -547,7 +568,7 @@ func BenchmarkTokenBucketUnpack(b *testing.B) {
 
 func BenchmarkTokenBucketIndex(b *testing.B) {
 	limiter, _ := DefaultLimiter()
-	ids := GenIDs(100)
+	ids := GenIDs(limiter, 100)
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -584,7 +605,7 @@ func BenchmarkTokenBucketTake(b *testing.B) {
 
 func BenchmarkTokenBucketParallel(b *testing.B) {
 	limiter, _ := DefaultLimiter()
-	ids := GenIDs(1000)
+	ids := GenIDs(limiter, 1000)
 	tickCounter := int32(0)
 
 	b.ReportAllocs()
@@ -603,7 +624,7 @@ func BenchmarkTokenBucketParallel(b *testing.B) {
 
 func BenchmarkTokenBucketManyIDs(b *testing.B) {
 	limiter, _ := DefaultLimiter()
-	ids := GenIDs(10000)
+	ids := GenIDs(limiter, 10000)
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -686,7 +707,7 @@ func BenchmarkTokenBucketRealWorldRequestRate(b *testing.B) {
 
 	// Create a set of IDs representing different API clients
 	numClients := 50
-	clients := GenIDs(numClients)
+	clients := GenIDs(limiter, numClients)
 	tickCounter := int32(0)
 
 	b.ReportAllocs()
@@ -711,7 +732,7 @@ func BenchmarkTokenBucketHighContention(b *testing.B) {
 	limiter, _ := DefaultLimiter()
 
 	// Only a few IDs to maximize contention
-	ids := GenIDs(5)
+	ids := GenIDs(limiter, 5)
 	tickCounter := int32(0)
 
 	// Run with high parallelism to test contention
@@ -771,7 +792,7 @@ func BenchmarkTokenBucketWithSystemClock(b *testing.B) {
 
 	// Create a limiter with higher token rate for more realistic benchmark
 	limiter, _ := NewTokenBucketLimiter(numBuckets, burstCapacity, 1000, time.Second)
-	ids := GenIDs(1000)
+	ids := GenIDs(limiter, 1000)
 
 	b.ReportAllocs()
 	b.ResetTimer()
