@@ -149,6 +149,21 @@ limiter, err := rate.NewTokenBucketLimiter(
 )
 ```
 
+#### Parameters:
+
+- `numBuckets`: Number of token buckets (automatically rounded up to the nearest power of two if not already a power of two)
+- `burstCapacity`: Maximum number of tokens that can be consumed at once
+- `refillRate`: Rate at which tokens are refilled
+- `refillRateUnit`: Time unit for refill rate calculations (e.g., time.Second)
+
+#### Input Validation:
+
+The constructor performs validation on all parameters and returns descriptive errors:
+
+- `refillRate` must be a positive, finite number (not NaN, infinity, zero, or negative)
+- `refillRateUnit` must represent a positive duration
+- The product of `refillRate` and `refillRateUnit` must not overflow when converted to nanoseconds
+
 #### Token Bucket Algorithm Explained
 
 The token bucket algorithm uses a simple metaphor of a bucket that holds tokens:
@@ -199,29 +214,47 @@ The token bucket algorithm uses a simple metaphor of a bucket that holds tokens:
 - Each request ID is consistently hashed to the same bucket
 - The bucket stores both token count and timestamp in a single uint64 for efficiency
 
-#### Parameters:
-
-- `numBuckets`: Number of token buckets (automatically rounded up to the nearest power of two if not already a power of two)
-- `burstCapacity`: Maximum number of tokens that can be consumed at once
-- `refillRate`: Rate at which tokens are refilled
-- `refillRateUnit`: Time unit for refill rate calculations (e.g., time.Second)
-
 ### AIMDTokenBucketLimiter
 
 The AIMD (Additive Increase, Multiplicative Decrease) algorithm provides dynamic rate adjustments inspired by TCP congestion control. It gradually increases token rates during successful operations and quickly reduces rates when encountering failures.
 
 ```go
 limiter, err := rate.NewAIMDTokenBucketLimiter(
-    numBuckets,                // Number of buckets (automatically rounded to nearest power of 2 if not already a power of 2)
-    burstCapacity,             // Maximum tokens per bucket
-    rateMin,                   // Minimum token refill rate
-    rateMax,                   // Maximum token refill rate
-    rateInit,                  // Initial token refill rate
-    rateAdditiveIncrease,      // Amount to increase rate on success
+    numBuckets,                 // Number of buckets (automatically rounded to nearest power of 2 if not already a power of 2)
+    burstCapacity,              // Maximum tokens per bucket
+    rateMin,                    // Minimum token refill rate
+    rateMax,                    // Maximum token refill rate
+    rateInit,                   // Initial token refill rate
+    rateAdditiveIncrease,       // Amount to increase rate on success
     rateMultiplicativeDecrease, // Factor to decrease rate on failure
-    rateUnit,                  // Time unit for rate calculations
+    rateUnit,                   // Time unit for rate calculations
 )
 ```
+
+#### Parameters:
+
+- `numBuckets`: Number of token buckets (automatically rounded up to the nearest power of two if not already a power of two)
+- `burstCapacity`: Maximum number of tokens that can be consumed at once
+- `rateMin`: Minimum token refill rate
+- `rateMax`: Maximum token refill rate
+- `rateInit`: Initial token refill rate
+- `rateAdditiveIncrease`: Amount to increase rate by on success
+- `rateMultiplicativeDecrease`: Factor to decrease rate by on failure
+- `rateUnit`: Time unit for rate calculations (e.g., time.Second)
+
+#### Input Validation:
+
+The constructor performs comprehensive validation on all parameters and returns descriptive errors:
+
+- `rateInit` must be a positive, finite number (not NaN, infinity, zero, or negative)
+- `rateUnit` must represent a positive duration
+- `rateMin` must be a positive, finite number
+- `rateMax` must be a positive, finite number
+- `rateMin` must be less than or equal to `rateMax`
+- `rateInit` must be between `rateMin` and `rateMax` (inclusive)
+- `rateAdditiveIncrease` must be a positive, finite number
+- `rateMultiplicativeDecrease` must be a finite number greater than or equal to 1.0
+- The product of `rateInit`, `rateMin`, `rateMax`, or `rateAdditiveIncrease` with `rateUnit` must not overflow when converted to nanoseconds
 
 #### AIMD Algorithm Explained
 
@@ -282,17 +315,6 @@ rateMin ────────────────────────
 - The actual token bucket mechanics remain the same as TokenBucketLimiter
 - Rate changes are applied atomically using lock-free operations
 - Rate information is stored alongside token information in the bucket
-
-#### Parameters:
-
-- `numBuckets`: Number of token buckets (automatically rounded up to the nearest power of two if not already a power of two)
-- `burstCapacity`: Maximum number of tokens that can be consumed at once
-- `rateMin`: Minimum token refill rate
-- `rateMax`: Maximum token refill rate
-- `rateInit`: Initial token refill rate
-- `rateAdditiveIncrease`: Amount to increase rate by on success
-- `rateMultiplicativeDecrease`: Factor to decrease rate by on failure
-- `rateUnit`: Time unit for rate calculations (e.g., time.Second)
 
 ## Performance
 

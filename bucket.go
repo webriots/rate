@@ -56,7 +56,9 @@ func NewTokenBucketLimiter(
 ) (*TokenBucketLimiter, error) {
 	if math.IsNaN(refillRate) || math.IsInf(refillRate, 0) || refillRate <= 0 {
 		return nil, fmt.Errorf("refillRate must be a positive, finite number")
-	} else if rate := float64(refillRateUnit.Nanoseconds()); rate <= 0 {
+	}
+
+	if rate := float64(refillRateUnit.Nanoseconds()); rate <= 0 {
 		return nil, fmt.Errorf("refillRateUnit must represent a positive duration")
 	} else if rate > math.MaxFloat64/refillRate {
 		return nil, fmt.Errorf("refillRate per duration is too large")
