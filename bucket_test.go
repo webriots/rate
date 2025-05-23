@@ -1,7 +1,9 @@
 package rate
 
 import (
+	"math"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -43,6 +45,123 @@ func TestTokenBucketRoundingToPowerOfTwo(t *testing.T) {
 
 	if limiter.buckets.Len() != 16 {
 		t.Errorf("Expected numBuckets to remain 16, got %d", limiter.buckets.Len())
+	}
+}
+
+// TestTokenBucketLimiterInvalidParams tests the parameter validation in NewTokenBucketLimiter
+func TestTokenBucketLimiterInvalidParams(t *testing.T) {
+	tests := []struct {
+		name          string
+		numBuckets    uint
+		burstCapacity uint8
+		refillRate    float64
+		refillUnit    time.Duration
+		wantErr       bool
+		errContains   string
+	}{
+		{
+			name:          "valid parameters",
+			numBuckets:    16,
+			burstCapacity: 10,
+			refillRate:    1.0,
+			refillUnit:    time.Second,
+			wantErr:       false,
+		},
+		{
+			name:          "negative refill rate",
+			numBuckets:    16,
+			burstCapacity: 10,
+			refillRate:    -1.0,
+			refillUnit:    time.Second,
+			wantErr:       true,
+			errContains:   "refillRate must be a positive",
+		},
+		{
+			name:          "zero refill rate",
+			numBuckets:    16,
+			burstCapacity: 10,
+			refillRate:    0.0,
+			refillUnit:    time.Second,
+			wantErr:       true,
+			errContains:   "refillRate must be a positive",
+		},
+		{
+			name:          "NaN refill rate",
+			numBuckets:    16,
+			burstCapacity: 10,
+			refillRate:    math.NaN(), // Use math.NaN() instead of division
+			refillUnit:    time.Second,
+			wantErr:       true,
+			errContains:   "refillRate must be a positive",
+		},
+		{
+			name:          "positive infinity refill rate",
+			numBuckets:    16,
+			burstCapacity: 10,
+			refillRate:    math.Inf(1), // Use math.Inf(1) for positive infinity
+			refillUnit:    time.Second,
+			wantErr:       true,
+			errContains:   "refillRate must be a positive",
+		},
+		{
+			name:          "negative infinity refill rate",
+			numBuckets:    16,
+			burstCapacity: 10,
+			refillRate:    math.Inf(-1), // Use math.Inf(-1) for negative infinity
+			refillUnit:    time.Second,
+			wantErr:       true,
+			errContains:   "refillRate must be a positive",
+		},
+		{
+			name:          "zero refill unit",
+			numBuckets:    16,
+			burstCapacity: 10,
+			refillRate:    1.0,
+			refillUnit:    0,
+			wantErr:       true,
+			errContains:   "refillRateUnit must represent a positive duration",
+		},
+		{
+			name:          "negative refill unit",
+			numBuckets:    16,
+			burstCapacity: 10,
+			refillRate:    1.0,
+			refillUnit:    -1 * time.Second,
+			wantErr:       true,
+			errContains:   "refillRateUnit must represent a positive duration",
+		},
+		{
+			name:          "rate overflow check",
+			numBuckets:    16,
+			burstCapacity: 10,
+			refillRate:    1e300, // Very large rate
+			refillUnit:    time.Second,
+			wantErr:       true,
+			errContains:   "refillRate per duration is too large",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := NewTokenBucketLimiter(
+				tt.numBuckets,
+				tt.burstCapacity,
+				tt.refillRate,
+				tt.refillUnit,
+			)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("NewTokenBucketLimiter() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if err != nil && tt.errContains != "" {
+				// We got an error and have a string to check
+				if !strings.Contains(err.Error(), tt.errContains) {
+					t.Errorf("NewTokenBucketLimiter() error = %v, should contain %q", err, tt.errContains)
+				}
+			}
+		})
 	}
 }
 
@@ -724,6 +843,54 @@ func TestCeilPow2(t *testing.T) {
 		result := ceilPow2(tc.input)
 		if result != tc.expected {
 			t.Errorf("ceilPow2(%d) = %d, expected %d", tc.input, result, tc.expected)
+		}
+	}
+}
+
+// TestUnitRate tests the unitRate function
+func TestUnitRate(t *testing.T) {
+	testCases := []struct {
+		nanosPerToken int64
+		timeUnit      time.Duration
+		expected      float64
+	}{
+		{1_000_000_000, time.Second, 1.0},         // 1 token per second
+		{500_000_000, time.Second, 0.5},           // 0.5 tokens per second
+		{2_000_000_000, time.Second, 2.0},         // 2 tokens per second
+		{1_000_000, time.Millisecond, 1.0},        // 1 token per millisecond
+		{60_000_000_000, time.Minute, 1.0},        // 1 token per minute
+		{86_400_000_000_000, time.Hour * 24, 1.0}, // 1 token per day
+		{0, time.Second, 0.0},                     // Edge case: zero rate
+	}
+
+	for _, tc := range testCases {
+		result := unitRate(tc.timeUnit, tc.nanosPerToken)
+		if math.Abs(result-tc.expected) > 0.001 {
+			t.Errorf("unitRate(%v, %d) = %f, expected %f", tc.timeUnit, tc.nanosPerToken, result, tc.expected)
+		}
+	}
+}
+
+// TestNanoRate tests the nanoRate function
+func TestNanoRate(t *testing.T) {
+	testCases := []struct {
+		tokensPerUnit float64
+		timeUnit      time.Duration
+		expected      int64
+	}{
+		{1.0, time.Second, 1_000_000_000},         // 1 token per second
+		{2.0, time.Second, 2_000_000_000},         // 2 tokens per second
+		{0.5, time.Second, 500_000_000},           // 0.5 tokens per second
+		{1.0, time.Millisecond, 1_000_000},        // 1 token per millisecond
+		{1.0, time.Minute, 60_000_000_000},        // 1 token per minute
+		{1.0, time.Hour * 24, 86_400_000_000_000}, // 1 token per day
+		{0.0, time.Second, 0},                     // Edge case: zero rate
+	}
+
+	for _, tc := range testCases {
+		result := nanoRate(tc.timeUnit, tc.tokensPerUnit)
+		if math.Abs(float64(result-tc.expected)) > 0.001 {
+			t.Errorf("nanoRate(%v, %.6f) = %d, expected %d", tc.timeUnit, tc.tokensPerUnit, result, tc.expected)
 		}
 	}
 }
