@@ -148,10 +148,12 @@ func (a *AIMDTokenBucketLimiter) IncreaseRate(id []byte) float64 {
 // DecreaseRate multiplicatively decreases the rate for the bucket
 // associated with the given ID. This implements the "multiplicative
 // decrease" part of the AIMD algorithm, typically called when
-// congestion or failures occur. The rate is decreased by dividing by
-// rateMD, but will not go below the minimum rate (rateMin). This
-// method is thread-safe and uses atomic operations to ensure
-// consistency.
+// congestion or failures occur. The rate is decreased by dividing the
+// distance from rateMin by rateMD, calculated as: rateMin +
+// (currentRate - rateMin) / rateMD. This ensures more gradual
+// decreases near the minimum rate. The rate will not go below the
+// minimum rate (rateMin). This method is thread-safe and uses atomic
+// operations to ensure consistency.
 //
 // Returns the current rate (in tokens per rateUnit) for the bucket
 // before the decrease was applied.
@@ -163,7 +165,7 @@ func (a *AIMDTokenBucketLimiter) DecreaseRate(id []byte) float64 {
 			return unitRate(a.rateUnit, rate)
 		}
 
-		next := max(int64(float64(rate)/a.rateMD), a.rateMin)
+		next := max(a.rateMin, a.rateMin+int64(float64(rate-a.rateMin)/a.rateMD))
 		if rate == next {
 			return unitRate(a.rateUnit, rate)
 		}

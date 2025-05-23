@@ -250,26 +250,26 @@ func TestAIMDDecreaseRate(t *testing.T) {
 	// Simulate throttling
 	limiter.DecreaseRate(id)
 	rate = sec(limiter.rates.Get(index))
-	if math.Abs(rate-5.5) > 0.001 { // 11 / 2 = 5.5
-		t.Errorf("After first decrease: got %f, want 5.5", rate)
+	if math.Abs(rate-6.0) > 0.001 { // 1 + (11 - 1) / 2 = 6.0
+		t.Errorf("After first decrease: got %f, want 6.0", rate)
 	}
 
 	limiter.DecreaseRate(id)
 	rate = sec(limiter.rates.Get(index))
-	if math.Abs(rate-2.75) > 0.001 { // 5.5 / 2 = 2.75
-		t.Errorf("After second decrease: got %f, want 2.75", rate)
+	if math.Abs(rate-3.5) > 0.001 { // 1 + (6 - 1) / 2 = 3.5
+		t.Errorf("After second decrease: got %f, want 3.5", rate)
 	}
 
 	limiter.DecreaseRate(id)
 	rate = sec(limiter.rates.Get(index))
-	if math.Abs(rate-1.375) > 0.001 { // 2.75 / 2 = 1.375
-		t.Errorf("After third decrease: got %f, want 1.375", rate)
+	if math.Abs(rate-2.25) > 0.001 { // 1 + (3.5 - 1) / 2 = 2.25
+		t.Errorf("After third decrease: got %f, want 2.25", rate)
 	}
 
 	limiter.DecreaseRate(id)
 	rate = sec(limiter.rates.Get(index))
-	if math.Abs(rate-aimdMinRate) > 0.001 { // 1.375 / 2 < 1, so minRate
-		t.Errorf("After fourth decrease: got %f, want %f (minRate)", rate, aimdMinRate)
+	if math.Abs(rate-1.625) > 0.001 { // 1 + (2.25 - 1) / 2 = 1.625
+		t.Errorf("After fourth decrease: got %f, want 1.625", rate)
 	}
 }
 
@@ -368,7 +368,7 @@ func TestAIMDRateLimits(t *testing.T) {
 	}
 
 	// Decrease rate below min
-	for range 10 {
+	for range 100 {
 		limiter.DecreaseRate(id)
 	}
 
@@ -585,7 +585,7 @@ func TestAIMDRate(t *testing.T) {
 
 	// Decrease rate and check both the return value and that Rate method reports the decrease
 	returnedRate = limiter.DecreaseRate(id)
-	decreasedRateExpected := increasedRateExpected / aimdDecreaseByFactor
+	decreasedRateExpected := aimdMinRate + (increasedRateExpected-aimdMinRate)/aimdDecreaseByFactor
 	decreasedRateActual := limiter.Rate(id)
 
 	// Verify DecreaseRate returned the previous rate
