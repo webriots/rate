@@ -159,14 +159,14 @@ The token bucket algorithm uses a simple metaphor of a bucket that holds tokens:
 │  ┌───┐  ┌───┐  ┌───┐  ┌   ┐  ┌   ┐  │
 │  │ T │  │ T │  │ T │  │   │  │   │  │
 │  └───┘  └───┘  └───┘  └   ┘  └   ┘  │
-│    ↑      ↑      ↑                  │
+│    │      │      │                  │
+│    ▼      ▼      ▼                  │
 │  avail  avail  avail                │
 │                                     │
 │  Available: 3 tokens │ Capacity: 5  │
 └─────────────────────────────────────┘
-        │
-        │ Refill rate: 100 tokens/second
-        ▼
+      ▲
+      │ Refill rate: 100 tokens/second
     ┌───┐  ┌───┐
     │ T │  │ T │  ...  ← New tokens added at constant rate
     └───┘  └───┘
@@ -229,7 +229,7 @@ The AIMD algorithm dynamically adjusts token refill rates based on success or fa
 
 ```
    Rate
-   │
+   ▲
    │
    │
    │
@@ -246,7 +246,7 @@ rateMax ────────────────────────
    │     ╱                           Decrease
    │   ╱                             (rate / 2)
    │ ╱
-rateInit ─
+rateInit
    │ ↑
    │ Additive
    │ Increase
