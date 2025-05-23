@@ -26,15 +26,34 @@ type AIMDTokenBucketLimiter struct {
 //     efficient hashing)
 //   - burstCapacity: max number of tokens that can be consumed at
 //     once
-//   - rateMin: minimum token refill rate
-//   - rateMax: maximum token refill rate
-//   - rateInit: initial token refill rate
+//   - rateMin: minimum token refill rate (must be positive and
+//     finite)
+//   - rateMax: maximum token refill rate (must be greater than or
+//     equal to rateMin)
+//   - rateInit: initial token refill rate (must be between rateMin
+//     and rateMax)
 //   - rateAdditiveIncrease: amount to increase rate by on success
+//     (typically a small value)
 //   - rateMultiplicativeDecrease: factor to decrease rate by on
-//     failure
-//   - rateUnit: time unit for rate calculations (e.g., time.Second)
+//     failure (typically a value like 2.0 meaning "divide by 2")
+//   - rateUnit: time unit for rate calculations (e.g., time.Second,
+//     must be positive)
 //
 // All rates are expressed in tokens per rateUnit.
+//
+// Input validation:
+//
+//   - If rateInit or rateUnit parameters are invalid, returns the
+//     same error that would be returned by NewTokenBucketLimiter
+//   - If refillRate is not a positive, finite number (e.g., negative,
+//     zero, NaN, or infinity), returns an error with message
+//     "refillRate must be a positive, finite number"
+//   - If refillRateUnit is not a positive duration, returns an error
+//     with message "refillRateUnit must represent a positive
+//     duration"
+//   - If the product of refillRate and refillRateUnit (in
+//     nanoseconds) exceeds maximum representable value, returns an
+//     error with message "refillRate per duration is too large"
 func NewAIMDTokenBucketLimiter(
 	numBuckets uint,
 	burstCapacity uint8,
@@ -45,14 +64,15 @@ func NewAIMDTokenBucketLimiter(
 	rateMultiplicativeDecrease float64,
 	rateUnit time.Duration,
 ) (*AIMDTokenBucketLimiter, error) {
-	// no errors currently thrown in NewTokenBucketLimiter(), ignore for
-	// code coverage
-	limiter, _ := NewTokenBucketLimiter(
+	limiter, err := NewTokenBucketLimiter(
 		numBuckets,
 		burstCapacity,
 		rateInit,
 		rateUnit,
 	)
+	if err != nil {
+		return nil, err
+	}
 
 	rate := nanoRate(rateUnit, rateInit)
 	rates := newAtomicSliceInt64(limiter.buckets.Len())
