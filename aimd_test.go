@@ -2,6 +2,7 @@ package rate
 
 import (
 	"math"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -70,6 +71,128 @@ func TestAIMDLimiterRoundingToPowerOfTwo(t *testing.T) {
 	// Check that the inner token bucket limiter has 4 buckets (next power of two after 3)
 	if limiter.limiter.buckets.Len() != 4 {
 		t.Errorf("Expected numBuckets to be rounded up to 4, got %d", limiter.limiter.buckets.Len())
+	}
+}
+
+// TestNewAIMDTokenBucketLimiterError tests error cases in NewAIMDTokenBucketLimiter
+func TestNewAIMDTokenBucketLimiterError(t *testing.T) {
+	tests := []struct {
+		name              string
+		numBuckets        uint
+		burstCapacity     uint8
+		rateMin           float64
+		rateMax           float64
+		rateInit          float64
+		rateAI            float64
+		rateMD            float64
+		rateUnit          time.Duration
+		wantErr           bool
+		errContainsString string
+	}{
+		{
+			name:          "valid parameters",
+			numBuckets:    16,
+			burstCapacity: 10,
+			rateMin:       1.0,
+			rateMax:       10.0,
+			rateInit:      5.0,
+			rateAI:        1.0,
+			rateMD:        2.0,
+			rateUnit:      time.Second,
+			wantErr:       false,
+		},
+		{
+			name:              "invalid rateInit",
+			numBuckets:        16,
+			burstCapacity:     10,
+			rateMin:           1.0,
+			rateMax:           10.0,
+			rateInit:          -1.0, // Invalid negative value
+			rateAI:            1.0,
+			rateMD:            2.0,
+			rateUnit:          time.Second,
+			wantErr:           true,
+			errContainsString: "refillRate must be a positive",
+		},
+		{
+			name:              "invalid refillRateUnit",
+			numBuckets:        16,
+			burstCapacity:     10,
+			rateMin:           1.0,
+			rateMax:           10.0,
+			rateInit:          5.0,
+			rateAI:            1.0,
+			rateMD:            2.0,
+			rateUnit:          -1 * time.Second, // Invalid negative duration
+			wantErr:           true,
+			errContainsString: "refillRateUnit must represent a positive duration",
+		},
+		{
+			name:              "rate overflow",
+			numBuckets:        16,
+			burstCapacity:     10,
+			rateMin:           1.0,
+			rateMax:           10.0,
+			rateInit:          1e300, // Very large value
+			rateAI:            1.0,
+			rateMD:            2.0,
+			rateUnit:          time.Second,
+			wantErr:           true,
+			errContainsString: "refillRate per duration is too large",
+		},
+		{
+			name:              "NaN rate init",
+			numBuckets:        16,
+			burstCapacity:     10,
+			rateMin:           1.0,
+			rateMax:           10.0,
+			rateInit:          math.NaN(), // NaN
+			rateAI:            1.0,
+			rateMD:            2.0,
+			rateUnit:          time.Second,
+			wantErr:           true,
+			errContainsString: "refillRate must be a positive",
+		},
+		{
+			name:              "zero rate unit",
+			numBuckets:        16,
+			burstCapacity:     10,
+			rateMin:           1.0,
+			rateMax:           10.0,
+			rateInit:          5.0,
+			rateAI:            1.0,
+			rateMD:            2.0,
+			rateUnit:          0, // Zero duration
+			wantErr:           true,
+			errContainsString: "refillRateUnit must represent a positive duration",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := NewAIMDTokenBucketLimiter(
+				tt.numBuckets,
+				tt.burstCapacity,
+				tt.rateMin,
+				tt.rateMax,
+				tt.rateInit,
+				tt.rateAI,
+				tt.rateMD,
+				tt.rateUnit,
+			)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("NewAIMDTokenBucketLimiter() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if err != nil && tt.errContainsString != "" {
+				// We got an error and have a string to check
+				if !strings.Contains(err.Error(), tt.errContainsString) {
+					t.Errorf("NewAIMDTokenBucketLimiter() error = %v, should contain %q", err, tt.errContainsString)
+				}
+			}
+		})
 	}
 }
 

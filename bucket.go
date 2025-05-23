@@ -1,7 +1,9 @@
 package rate
 
 import (
+	"fmt"
 	"hash/maphash"
+	"math"
 	"time"
 
 	"github.com/webriots/rate/time56"
@@ -25,20 +27,41 @@ type TokenBucketLimiter struct {
 //     efficient hashing)
 //   - burstCapacity: maximum number of tokens that can be consumed at
 //     once
-//   - refillRate: rate at which tokens are refilled
+//   - refillRate: rate at which tokens are refilled (must be positive
+//     and finite)
 //   - refillRateUnit: time unit for refill rate calculations (e.g.,
-//     time.Second)
+//     time.Second, must be a positive duration)
 //
 // Returns a new TokenBucketLimiter instance and any error that
 // occurred during creation. The numBuckets parameter is automatically
 // rounded up to the nearest power of two if not already a power of
 // two, for efficient hashing.
+//
+// Input validation:
+//
+//   - If refillRate is not a positive, finite number (e.g., negative,
+//     zero, NaN, or infinity), returns an error with message
+//     "refillRate must be a positive, finite number"
+//   - If refillRateUnit is not a positive duration, returns an error
+//     with message "refillRateUnit must represent a positive
+//     duration"
+//   - If the product of refillRate and refillRateUnit (in
+//     nanoseconds) exceeds maximum representable value, returns an
+//     error with message "refillRate per duration is too large"
 func NewTokenBucketLimiter(
 	numBuckets uint,
 	burstCapacity uint8,
 	refillRate float64,
 	refillRateUnit time.Duration,
 ) (*TokenBucketLimiter, error) {
+	if math.IsNaN(refillRate) || math.IsInf(refillRate, 0) || refillRate <= 0 {
+		return nil, fmt.Errorf("refillRate must be a positive, finite number")
+	} else if rate := float64(refillRateUnit.Nanoseconds()); rate <= 0 {
+		return nil, fmt.Errorf("refillRateUnit must represent a positive duration")
+	} else if rate > math.MaxFloat64/refillRate {
+		return nil, fmt.Errorf("refillRate per duration is too large")
+	}
+
 	n := ceilPow2(uint64(numBuckets))
 	bucket := newTokenBucket(burstCapacity, time56.Unix(nowfn()))
 	packed := bucket.packed()
@@ -191,6 +214,16 @@ func unpack(packed uint64) tokenBucket {
 // nanoRate converts a refill rate from tokens per unit to nanoseconds
 // per token. This is used to calculate how frequently tokens should
 // be added to buckets.
+//
+// Given a rate like "5 tokens per second", the returned value would
+// be the number of nanoseconds per token (200,000,000 ns/token or 0.2
+// seconds per token). The formula used is: (duration in nanoseconds)
+// * (tokens per unit).
+//
+// For example:
+//   - 1 token per second → 1,000,000,000 ns per token
+//   - 2 tokens per second → 2,000,000,000 ns per token
+//   - 0.5 tokens per second → 500,000,000 ns per token
 func nanoRate(refillRateUnit time.Duration, refillRate float64) int64 {
 	return int64(float64(refillRateUnit.Nanoseconds()) * refillRate)
 }
@@ -199,6 +232,15 @@ func nanoRate(refillRateUnit time.Duration, refillRate float64) int64 {
 // per unit. This is the inverse operation of nanoRate and is used to
 // provide human-readable rate values for APIs returning rate
 // information.
+//
+// Given a rate in nanoseconds per token, it returns the number of
+// tokens per time unit. The formula used is: (nanoseconds per token)
+// / (unit duration in nanoseconds).
+//
+// For example:
+//   - 1,000,000,000 ns per token → 1.0 tokens per second
+//   - 500,000,000 ns per token → 0.5 tokens per second
+//   - 2,000,000,000 ns per token → 2.0 tokens per second
 func unitRate(refillRateUnit time.Duration, refillRateNanos int64) float64 {
 	return float64(refillRateNanos) / float64(refillRateUnit.Nanoseconds())
 }
@@ -214,6 +256,19 @@ const maxPow2 = 1 << 62
 // the input is already a power of two, it returns the input
 // unchanged. This implementation uses a bit manipulation algorithm
 // for efficiency.
+//
+// Special cases:
+//   - If input is 0, returns 1 (2^0)
+//   - If input exceeds maxPow2 (2^62), returns maxPow2 to avoid
+//     overflow
+//
+// Examples:
+//   - ceilPow2(0) → 1
+//   - ceilPow2(1) → 1
+//   - ceilPow2(2) → 2
+//   - ceilPow2(3) → 4
+//   - ceilPow2(4) → 4
+//   - ceilPow2(5) → 8
 func ceilPow2(x uint64) uint64 {
 	if x == 0 {
 		return 1
