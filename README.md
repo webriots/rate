@@ -476,10 +476,10 @@ func handleRequest(backendID []byte) {
         err := callBackendService()
         if err == nil {
             // Backend is healthy, increase rate
-            limiter.IncreaseRateForID(backendID)
+            limiter.IncreaseRate(backendID)
         } else if isOverloadError(err) {
             // Backend is overloaded, decrease rate
-            limiter.DecreaseRateForID(backendID)
+            limiter.DecreaseRate(backendID)
         }
     } else {
         // Circuit breaking, return error immediately
