@@ -232,17 +232,17 @@ The AIMD algorithm dynamically adjusts token refill rates based on success or fa
    │
    │
 rateMax ─────────────────────────────────────────
-   │                       ╱       │           ╱
-   │                     ╱         │         ╱
-   │                   ╱           │       ╱
-   │                 ╱             │     ╱
-   │               ╱               │   ╱
-   │             ╱                 │ ╱
-   │           ╱                   ▼ Multiplicative
-   │         ╱                       Decrease
-   │       ╱                         (rate / 2)
-   │     ╱
-   │   ╱
+   │                       ╱       │
+   │                     ╱         │
+   │                   ╱           │           ╱
+   │                 ╱             │         ╱
+   │               ╱               │       ╱
+   │             ╱                 │     ╱
+   │           ╱                   │   ╱
+   │         ╱                     │ ╱
+   │       ╱                       ▼ Multiplicative
+   │     ╱                           Decrease
+   │   ╱                             (rate / 2)
    │ ╱
 rateInit ─
    │ ↑
@@ -265,7 +265,7 @@ rateMin ────────────────────────
    - When operations succeed, the rate increases linearly by `rateAdditiveIncrease`
      - `newRate = currentRate + rateAdditiveIncrease`
    - When operations fail, the rate decreases multiplicatively by `rateMultiplicativeDecrease`
-     - `newRate = currentRate / rateMultiplicativeDecrease`
+     - `newRate = rateMin + (currentRate - rateMin) / rateMultiplicativeDecrease`
    - Rates are bounded between `rateMin` (lower bound) and `rateMax` (upper bound)
 
 3. **Practical Applications**:
