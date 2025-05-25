@@ -365,6 +365,267 @@ BenchmarkTokenBucketHighContention-10           579507058                2.068 n
 BenchmarkTokenBucketWithSystemClock-10          459682273                2.605 ns/op           0 B/op          0 allocs/op
 ```
 
+## AIMD vs Circuit Breaker Pattern
+
+The AIMD (Additive Increase, Multiplicative Decrease) rate limiter offers a compelling alternative to the traditional circuit breaker pattern for managing failures and protecting backend services. While both patterns aim to prevent cascading failures and allow recovery time for struggling services, they approach the problem with fundamentally different philosophies.
+
+### Understanding the Approaches
+
+#### Circuit Breaker: Binary State Management
+
+The circuit breaker pattern operates like an electrical circuit breaker with discrete states:
+
+```
+CLOSED (Normal) → OPEN (Failed) → HALF-OPEN (Testing) → CLOSED/OPEN
+```
+
+- **Binary Decision**: Service is either available (closed) or unavailable (open)
+- **Complete Cutoff**: When open, ALL requests are rejected immediately
+- **Fixed Recovery**: After a timeout, it cautiously tests with limited requests
+- **Abrupt Transitions**: Can cause thundering herd problems when reopening
+
+#### AIMD: Continuous Adaptation
+
+AIMD treats service capacity as a continuous spectrum rather than an on/off switch:
+
+```
+Rate: [Min ←────────────────────→ Max]
+      Gradually adjusts based on feedback
+```
+
+- **Gradual Adjustment**: Continuously fine-tunes the allowed request rate
+- **Partial Availability**: Always allows some traffic (at least rateMin)
+- **Dynamic Recovery**: Automatically probes for increased capacity
+- **Smooth Transitions**: No sudden traffic spikes or drops
+
+### Key Advantages of AIMD
+
+#### 1. **No Complete Service Blackouts**
+
+Unlike circuit breakers that completely stop traffic when open, AIMD always maintains a minimum service level:
+
+```go
+// Circuit Breaker approach - all or nothing
+if circuitBreaker.IsOpen() {
+    return errors.New("service unavailable") // 100% rejection
+}
+
+// AIMD approach - always some availability
+if limiter.TakeToken(serviceID) {
+    // Process at current adaptive rate (never 0%)
+}
+```
+
+#### 2. **Smoother Recovery Process**
+
+AIMD eliminates the "thundering herd" problem that circuit breakers face when transitioning from open to closed:
+
+- **Circuit Breaker**: Sudden jump from 0% → test traffic → 100% traffic
+- **AIMD**: Smooth increase from current rate → gradually higher → maximum rate
+
+#### 3. **Better Resource Utilization**
+
+AIMD continuously finds the optimal operating point:
+
+```go
+// AIMD automatically finds the sweet spot
+// If backend can handle 73% of max traffic, AIMD will stabilize there
+// Circuit breaker would oscillate between 0% and 100%
+```
+
+#### 4. **Self-Tuning Behavior**
+
+AIMD requires no manual configuration of failure thresholds or timeout periods:
+
+- **Circuit Breaker**: Requires configuring failure threshold, timeout duration, half-open test size
+- **AIMD**: Only needs min/max rates and increase/decrease factors
+
+### When to Use Each Pattern
+
+#### Choose Circuit Breaker When:
+
+1. **Binary Service States**: Service is truly either up or down (e.g., database connection)
+2. **Complete Failures**: Service failures are catastrophic rather than performance degradations
+3. **Fast Recovery Needed**: Service recovers quickly and completely after a pause
+4. **Legacy Integration**: Working with systems that expect traditional circuit breaker behavior
+
+#### Choose AIMD When:
+
+1. **Variable Capacity**: Backend service capacity fluctuates (auto-scaling, shared resources)
+2. **Gradual Degradation**: Service degrades gradually under load rather than failing completely
+3. **Continuous Operation**: Some traffic is better than no traffic
+4. **Dynamic Environments**: Cloud environments with variable performance characteristics
+5. **Microservices**: Service meshes where partial availability is valuable
+
+### Implementation Example: Migrating from Circuit Breaker to AIMD
+
+Here's how you might replace a circuit breaker with AIMD:
+
+```go
+// Before: Circuit Breaker Approach
+type ServiceClient struct {
+    circuitBreaker *CircuitBreaker
+}
+
+func (c *ServiceClient) CallService(request Request) error {
+    if !c.circuitBreaker.Call(func() error {
+        return c.makeHTTPRequest(request)
+    }) {
+        return ErrCircuitBreakerOpen
+    }
+    return nil
+}
+
+// After: AIMD Approach
+type ServiceClient struct {
+    limiter *rate.AIMDTokenBucketLimiter
+}
+
+func (c *ServiceClient) CallService(request Request) error {
+    serviceID := []byte("backend-service")
+
+    if !c.limiter.TakeToken(serviceID) {
+        return ErrRateLimited
+    }
+
+    err := c.makeHTTPRequest(request)
+
+    if err == nil {
+        // Success - gradually increase allowed rate
+        c.limiter.IncreaseRate(serviceID)
+    } else if isOverloadError(err) {
+        // Overload detected - quickly reduce rate
+        c.limiter.DecreaseRate(serviceID)
+    }
+    // Other errors (network, etc.) don't affect rate
+
+    return err
+}
+```
+
+### Real-World Scenario: API Gateway Protection
+
+Consider an API gateway protecting multiple backend services:
+
+```go
+gateway, _ := rate.NewAIMDTokenBucketLimiter(
+    4096,    // numBuckets for different services
+    50,      // burstCapacity
+    10.0,    // rateMin - always allow some traffic
+    1000.0,  // rateMax - maximum when healthy
+    100.0,   // rateInit - conservative start
+    10.0,    // rateAdditiveIncrease - probe for capacity
+    2.0,     // rateMultiplicativeDecrease - quick backoff
+    time.Second,
+)
+
+func handleRequest(serviceID []byte, request Request) Response {
+    if !gateway.TakeToken(serviceID) {
+        // Still rate limited, but some requests get through
+        // Better than circuit breaker's complete blackout
+        return Response{Status: 429, Body: "Rate limited"}
+    }
+
+    resp, err := callBackend(serviceID, request)
+
+    // Feedback loop for adaptation
+    if err == nil && resp.Status < 500 {
+        gateway.IncreaseRate(serviceID)
+    } else if resp.Status == 503 || isTimeout(err) {
+        gateway.DecreaseRate(serviceID)
+    }
+
+    return resp
+}
+```
+
+### Performance During Failures
+
+Here's how AIMD and Circuit Breakers behave differently during a typical backend service failure:
+
+```mermaid
+---
+title: Circuit Breaker Pattern - Traffic During Failure
+---
+xychart-beta
+    title "Circuit Breaker Pattern - Traffic During Failure"
+    x-axis ["0s", "15s", "30s", "45s", "60s", "75s", "90s", "95s", "105s", "120s", "150s", "180s"]
+    y-axis "Traffic Allowed (%)" 0 --> 100
+    line [100, 100, 100, 0, 0, 0, 0, 10, 100, 100, 100, 100]
+```
+
+```mermaid
+---
+title: AIMD Pattern - Traffic During Failure
+---
+xychart-beta
+    title "AIMD Pattern - Traffic During Failure"
+    x-axis ["0s", "15s", "30s", "45s", "60s", "75s", "90s", "105s", "120s", "150s", "180s"]
+    y-axis "Traffic Allowed (%)" 0 --> 100
+    line [100, 100, 100, 40, 35, 32, 30, 35, 45, 70, 90, 100]
+```
+
+For better visualization, here's an alternative representation using Mermaid's gantt chart to show the state transitions:
+
+```mermaid
+gantt
+    title Circuit Breaker State Transitions During Failure
+    dateFormat X
+    axisFormat %s
+    
+    section States
+    CLOSED (Normal)           :done, closed1, 0, 30s
+    OPEN (Complete Stop)      :crit, open, after closed1, 60s
+    HALF-OPEN (Testing)       :active, halfopen, after open, 5s
+    CLOSED (Recovered)        :done, closed2, after halfopen, 85s
+```
+
+```mermaid
+gantt
+    title AIMD Rate Adjustments During Failure
+    dateFormat X
+    axisFormat %s
+    
+    section Rate Level
+    Normal (100%)             :done, normal, 0, 30s
+    Fast Decrease (100%→30%)  :crit, decrease, after normal, 10s
+    Minimum Rate (30%)        :active, minimum, after decrease, 50s
+    Gradual Increase (30%→100%) :done, increase, after minimum, 90s
+```
+
+**Timeline Events:**
+- **0-30s**: Normal operation at 100% capacity
+- **30s**: Backend service begins failing
+- **30-90s**: Circuit Breaker enters OPEN state (0% traffic), AIMD reduces to minimum rate (30%)
+- **90-95s**: Circuit Breaker tests with limited traffic (HALF-OPEN)
+- **95-180s**: Circuit Breaker returns to normal (100%), AIMD gradually increases
+
+**Key Observations:**
+
+1. **Service Availability**:
+   - Circuit Breaker: 60 seconds of complete unavailability (0% traffic)
+   - AIMD: Maintains 30% minimum traffic throughout failure
+
+2. **Recovery Behavior**:
+   - Circuit Breaker: Abrupt transitions (100% → 0% → 10% → 100%)
+   - AIMD: Smooth transitions (100% → 30% → gradual increase → 100%)
+
+3. **Traffic Served During 3-Minute Failure**:
+   - Circuit Breaker: ~50% of normal traffic lost
+   - AIMD: ~65% of normal traffic still served
+
+### Summary
+
+While circuit breakers have served us well in distributed systems, AIMD offers a more nuanced approach that better matches the reality of modern cloud services. Instead of asking "is the service up or down?", AIMD asks "what load can the service handle right now?" This continuous adaptation leads to:
+
+- Better resource utilization
+- Smoother failure handling
+- Automatic optimization
+- No manual threshold tuning
+- Improved user experience during degradation
+
+For new implementations, consider AIMD as your first choice for backend protection, falling back to circuit breakers only when binary state management is explicitly required.
+
 ## Advanced Usage
 
 ### Choosing the Optimal Number of Buckets
