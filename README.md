@@ -545,27 +545,21 @@ Here's how AIMD and Circuit Breakers behave differently during a typical backend
 
 ```mermaid
 ---
-title: Circuit Breaker Pattern - Traffic During Failure
+title: Traffic Patterns During Backend Failure - Circuit Breaker vs AIMD
 ---
 xychart-beta
-    title "Circuit Breaker Pattern - Traffic During Failure"
+    title "Traffic Patterns During Backend Failure"
     x-axis ["0s", "15s", "30s", "45s", "60s", "75s", "90s", "95s", "105s", "120s", "150s", "180s"]
     y-axis "Traffic Allowed (%)" 0 --> 100
-    line [100, 100, 100, 0, 0, 0, 0, 10, 100, 100, 100, 100]
+    line "Circuit Breaker" [100, 100, 100, 0, 0, 0, 0, 10, 100, 100, 100, 100]
+    line "AIMD" [100, 100, 100, 40, 35, 32, 30, 35, 45, 70, 90, 100]
 ```
 
-```mermaid
----
-title: AIMD Pattern - Traffic During Failure
----
-xychart-beta
-    title "AIMD Pattern - Traffic During Failure"
-    x-axis ["0s", "15s", "30s", "45s", "60s", "75s", "90s", "105s", "120s", "150s", "180s"]
-    y-axis "Traffic Allowed (%)" 0 --> 100
-    line [100, 100, 100, 40, 35, 32, 30, 35, 45, 70, 90, 100]
-```
+The chart above shows the dramatic difference between the two approaches:
+- **Circuit Breaker (red line)**: Binary behavior with complete traffic stop
+- **AIMD (blue line)**: Maintains minimum service level throughout failure
 
-For better visualization, here's an alternative representation using Mermaid's gantt chart to show the state transitions:
+For better visualization of the state transitions, here's an alternative representation:
 
 ```mermaid
 gantt
