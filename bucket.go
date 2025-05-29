@@ -220,14 +220,14 @@ func unpack(packed uint64) tokenBucket {
 // Given a rate like "5 tokens per second", the returned value would
 // be the number of nanoseconds per token (200,000,000 ns/token or 0.2
 // seconds per token). The formula used is: (duration in nanoseconds)
-// * (tokens per unit).
+// / (tokens per unit).
 //
 // For example:
 //   - 1 token per second → 1,000,000,000 ns per token
-//   - 2 tokens per second → 2,000,000,000 ns per token
-//   - 0.5 tokens per second → 500,000,000 ns per token
+//   - 2 tokens per second → 500,000,000 ns per token
+//   - 0.5 tokens per second → 2,000,000,000 ns per token
 func nanoRate(refillRateUnit time.Duration, refillRate float64) int64 {
-	return int64(float64(refillRateUnit.Nanoseconds()) * refillRate)
+	return int64(float64(refillRateUnit.Nanoseconds()) / refillRate)
 }
 
 // unitRate converts a rate in nanoseconds per token back to tokens
@@ -236,15 +236,15 @@ func nanoRate(refillRateUnit time.Duration, refillRate float64) int64 {
 // information.
 //
 // Given a rate in nanoseconds per token, it returns the number of
-// tokens per time unit. The formula used is: (nanoseconds per token)
-// / (unit duration in nanoseconds).
+// tokens per time unit. The formula used is: (unit duration in
+// nanoseconds) / (nanoseconds per token).
 //
 // For example:
 //   - 1,000,000,000 ns per token → 1.0 tokens per second
-//   - 500,000,000 ns per token → 0.5 tokens per second
-//   - 2,000,000,000 ns per token → 2.0 tokens per second
+//   - 500,000,000 ns per token → 2.0 tokens per second
+//   - 2,000,000,000 ns per token → 0.5 tokens per second
 func unitRate(refillRateUnit time.Duration, refillRateNanos int64) float64 {
-	return float64(refillRateNanos) / float64(refillRateUnit.Nanoseconds())
+	return float64(refillRateUnit.Nanoseconds()) / float64(refillRateNanos)
 }
 
 // maxPow2 defines the maximum power of two value that ceilPow2 will

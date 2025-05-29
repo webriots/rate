@@ -14,12 +14,12 @@ import (
 // similar to the congestion control algorithm used in TCP.
 type AIMDTokenBucketLimiter struct {
 	limiter  *TokenBucketLimiter
-	rates    atomicSliceInt64 // Per-bucket rates in tokens per second
-	rateMin  int64            // Minimum rate (tokens per unit)
-	rateMax  int64            // Maximum rate (tokens per unit)
-	rateAI   int64            // Additive increase (tokens per unit)
-	rateMD   float64          // Multiplicative decrease (multiplier)
-	rateUnit time.Duration    // Time unit for rate calculations
+	rates    atomicSliceFloat64 // Per-bucket rates in tokens per unit
+	rateMin  float64            // Minimum rate (tokens per unit)
+	rateMax  float64            // Maximum rate (tokens per unit)
+	rateAI   float64            // Additive increase (tokens per unit)
+	rateMD   float64            // Multiplicative decrease (multiplier)
+	rateUnit time.Duration      // Time unit for rate calculations
 }
 
 // NewAIMDTokenBucketLimiter creates a new AIMD token bucket limiter
@@ -139,18 +139,17 @@ func NewAIMDTokenBucketLimiter(
 		}
 	}
 
-	rate := nanoRate(rateUnit, rateInit)
-	rates := newAtomicSliceInt64(limiter.buckets.Len())
+	rates := newAtomicSliceFloat64(limiter.buckets.Len())
 	for i := range rates.Len() {
-		rates.Set(i, rate)
+		rates.Set(i, rateInit)
 	}
 
 	return &AIMDTokenBucketLimiter{
 		limiter:  limiter,
 		rates:    rates,
-		rateMin:  nanoRate(rateUnit, rateMin),
-		rateMax:  nanoRate(rateUnit, rateMax),
-		rateAI:   nanoRate(rateUnit, rateAdditiveIncrease),
+		rateMin:  rateMin,
+		rateMax:  rateMax,
+		rateAI:   rateAdditiveIncrease,
 		rateMD:   rateMultiplicativeDecrease,
 		rateUnit: rateUnit,
 	}, nil
@@ -163,7 +162,8 @@ func NewAIMDTokenBucketLimiter(
 func (a *AIMDTokenBucketLimiter) TakeToken(id []byte) bool {
 	index := a.limiter.index(id)
 	rate := a.rates.Get(index)
-	return a.limiter.takeTokenInner(index, rate)
+	nano := nanoRate(a.rateUnit, rate)
+	return a.limiter.takeTokenInner(index, nano)
 }
 
 // Check returns whether a token would be available for the given ID
@@ -175,7 +175,8 @@ func (a *AIMDTokenBucketLimiter) TakeToken(id []byte) bool {
 func (a *AIMDTokenBucketLimiter) Check(id []byte) bool {
 	index := a.limiter.index(id)
 	rate := a.rates.Get(index)
-	return a.limiter.checkInner(index, rate)
+	nano := nanoRate(a.rateUnit, rate)
+	return a.limiter.checkInner(index, nano)
 }
 
 // IncreaseRate additively increases the rate for the bucket
@@ -192,7 +193,7 @@ func (a *AIMDTokenBucketLimiter) IncreaseRate(id []byte) float64 {
 	for {
 		rate := a.rates.Get(index)
 		if rate == a.rateMax {
-			return unitRate(a.rateUnit, rate)
+			return rate
 		}
 
 		next := a.rateMax
@@ -201,11 +202,11 @@ func (a *AIMDTokenBucketLimiter) IncreaseRate(id []byte) float64 {
 		}
 
 		if rate == next {
-			return unitRate(a.rateUnit, rate)
+			return rate
 		}
 
 		if a.rates.CompareAndSwap(index, rate, next) {
-			return unitRate(a.rateUnit, rate)
+			return rate
 		}
 	}
 }
@@ -227,16 +228,16 @@ func (a *AIMDTokenBucketLimiter) DecreaseRate(id []byte) float64 {
 	for {
 		rate := a.rates.Get(index)
 		if rate == a.rateMin {
-			return unitRate(a.rateUnit, rate)
+			return rate
 		}
 
-		next := max(a.rateMin, a.rateMin+int64(float64(rate-a.rateMin)/a.rateMD))
+		next := max(a.rateMin, a.rateMin+(rate-a.rateMin)/a.rateMD)
 		if rate == next {
-			return unitRate(a.rateUnit, rate)
+			return rate
 		}
 
 		if a.rates.CompareAndSwap(index, rate, next) {
-			return unitRate(a.rateUnit, rate)
+			return rate
 		}
 	}
 }
@@ -248,6 +249,5 @@ func (a *AIMDTokenBucketLimiter) DecreaseRate(id []byte) float64 {
 // goroutines.
 func (a *AIMDTokenBucketLimiter) Rate(id []byte) float64 {
 	index := a.limiter.index(id)
-	rate := a.rates.Get(index)
-	return unitRate(a.rateUnit, rate)
+	return a.rates.Get(index)
 }
