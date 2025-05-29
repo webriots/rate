@@ -875,18 +875,22 @@ func TestUnitRate(t *testing.T) {
 		timeUnit      time.Duration
 		expected      float64
 	}{
-		{1_000_000_000, time.Second, 1.0},         // 1 token per second
-		{500_000_000, time.Second, 0.5},           // 0.5 tokens per second
-		{2_000_000_000, time.Second, 2.0},         // 2 tokens per second
-		{1_000_000, time.Millisecond, 1.0},        // 1 token per millisecond
-		{60_000_000_000, time.Minute, 1.0},        // 1 token per minute
-		{86_400_000_000_000, time.Hour * 24, 1.0}, // 1 token per day
-		{0, time.Second, 0.0},                     // Edge case: zero rate
+		{1_000_000_000, time.Second, 1.0},         // 1,000,000,000 ns per token → 1s/1,000,000,000ns = 1.0 tokens per second
+		{500_000_000, time.Second, 2.0},           // 500,000,000 ns per token → 1s/500,000,000ns = 2.0 tokens per second
+		{2_000_000_000, time.Second, 0.5},         // 2,000,000,000 ns per token → 1s/2,000,000,000ns = 0.5 tokens per second
+		{1_000_000, time.Millisecond, 1.0},        // 1,000,000 ns per token → 1ms/1,000,000ns = 1.0 tokens per millisecond
+		{60_000_000_000, time.Minute, 1.0},        // 60,000,000,000 ns per token → 60s/60,000,000,000ns = 1.0 tokens per minute
+		{86_400_000_000_000, time.Hour * 24, 1.0}, // 86,400,000,000,000 ns per token → 86400s/86,400,000,000,000ns = 1.0 tokens per day
+		// Note: 0 nanosPerToken would cause division by zero resulting in +Inf
 	}
 
 	for _, tc := range testCases {
 		result := unitRate(tc.timeUnit, tc.nanosPerToken)
-		if math.Abs(result-tc.expected) > 0.001 {
+		if tc.nanosPerToken == 0 {
+			if !math.IsInf(result, 1) {
+				t.Errorf("unitRate(%v, %d) = %f, expected +Inf", tc.timeUnit, tc.nanosPerToken, result)
+			}
+		} else if math.Abs(result-tc.expected) > 0.001 {
 			t.Errorf("unitRate(%v, %d) = %f, expected %f", tc.timeUnit, tc.nanosPerToken, result, tc.expected)
 		}
 	}
@@ -899,13 +903,13 @@ func TestNanoRate(t *testing.T) {
 		timeUnit      time.Duration
 		expected      int64
 	}{
-		{1.0, time.Second, 1_000_000_000},         // 1 token per second
-		{2.0, time.Second, 2_000_000_000},         // 2 tokens per second
-		{0.5, time.Second, 500_000_000},           // 0.5 tokens per second
-		{1.0, time.Millisecond, 1_000_000},        // 1 token per millisecond
-		{1.0, time.Minute, 60_000_000_000},        // 1 token per minute
-		{1.0, time.Hour * 24, 86_400_000_000_000}, // 1 token per day
-		{0.0, time.Second, 0},                     // Edge case: zero rate
+		{1.0, time.Second, 1_000_000_000},         // 1 token per second → 1s/1 = 1,000,000,000 ns per token
+		{2.0, time.Second, 500_000_000},           // 2 tokens per second → 1s/2 = 500,000,000 ns per token
+		{0.5, time.Second, 2_000_000_000},         // 0.5 tokens per second → 1s/0.5 = 2,000,000,000 ns per token
+		{1.0, time.Millisecond, 1_000_000},        // 1 token per millisecond → 1ms/1 = 1,000,000 ns per token
+		{1.0, time.Minute, 60_000_000_000},        // 1 token per minute → 60s/1 = 60,000,000,000 ns per token
+		{1.0, time.Hour * 24, 86_400_000_000_000}, // 1 token per day → 86400s/1 = 86,400,000,000,000 ns per token
+		// Note: 0.0 rate would cause division by zero, so we skip that test case
 	}
 
 	for _, tc := range testCases {

@@ -1,38 +1,9 @@
 package rate
 
-import "sync/atomic"
-
-// atomicSliceInt64 is a slice of int64 values with atomic operations.
-// It provides thread-safe access to elements in the slice.
-type atomicSliceInt64 []int64
-
-// newAtomicSliceInt64 creates a new atomicSliceInt64 with the
-// specified size.
-func newAtomicSliceInt64(size int) atomicSliceInt64 {
-	return make([]int64, size)
-}
-
-// Get atomically loads and returns the value at the specified index.
-func (a atomicSliceInt64) Get(index int) int64 {
-	return atomic.LoadInt64(&a[index])
-}
-
-// Set atomically stores the value at the specified index.
-func (a atomicSliceInt64) Set(index int, value int64) {
-	atomic.StoreInt64(&a[index], value)
-}
-
-// CompareAndSwap atomically compares the value at the specified index
-// with old and swaps it with new if they match. Returns true if the
-// swap occurred.
-func (a atomicSliceInt64) CompareAndSwap(index int, old, new int64) bool {
-	return atomic.CompareAndSwapInt64(&a[index], old, new)
-}
-
-// Len returns the length of the atomic slice.
-func (a atomicSliceInt64) Len() int {
-	return len(a)
-}
+import (
+	"math"
+	"sync/atomic"
+)
 
 // atomicSliceUint64 is a slice of uint64 values with atomic
 // operations. It provides thread-safe access to elements in the
@@ -64,5 +35,44 @@ func (a atomicSliceUint64) CompareAndSwap(index int, old, new uint64) bool {
 
 // Len returns the length of the atomic slice.
 func (a atomicSliceUint64) Len() int {
+	return len(a)
+}
+
+// atomicSliceFloat64 is a slice of float64 values with atomic
+// operations. It provides thread-safe access to elements in the
+// slice. Float64 values are stored as uint64 bits for atomic
+// operations.
+type atomicSliceFloat64 []uint64
+
+// newAtomicSliceFloat64 creates a new atomicSliceFloat64 with the
+// specified size.
+func newAtomicSliceFloat64(size int) atomicSliceFloat64 {
+	return make([]uint64, size)
+}
+
+// Get atomically loads and returns the float64 value at the specified
+// index.
+func (a atomicSliceFloat64) Get(index int) float64 {
+	bits := atomic.LoadUint64(&a[index])
+	return math.Float64frombits(bits)
+}
+
+// Set atomically stores the float64 value at the specified index.
+func (a atomicSliceFloat64) Set(index int, value float64) {
+	bits := math.Float64bits(value)
+	atomic.StoreUint64(&a[index], bits)
+}
+
+// CompareAndSwap atomically compares the float64 value at the
+// specified index with old and swaps it with new if they match.
+// Returns true if the swap occurred.
+func (a atomicSliceFloat64) CompareAndSwap(index int, old, new float64) bool {
+	oldBits := math.Float64bits(old)
+	newBits := math.Float64bits(new)
+	return atomic.CompareAndSwapUint64(&a[index], oldBits, newBits)
+}
+
+// Len returns the length of the atomic slice.
+func (a atomicSliceFloat64) Len() int {
 	return len(a)
 }
