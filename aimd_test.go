@@ -1,6 +1,7 @@
 package rate
 
 import (
+	"hash/maphash"
 	"math"
 	"strings"
 	"sync"
@@ -1519,6 +1520,7 @@ func TestAIMDDecreaseRateTriggerClamping(t *testing.T) {
 			limiter := &AIMDTokenBucketLimiter{
 				limiter: &TokenBucketLimiter{
 					buckets: newAtomicSliceUint64(1),
+					seed:    maphash.MakeSeed(),
 				},
 				rates:    newAtomicSliceFloat64(1),
 				rateMin:  unitRate(time.Second, tc.rateMin), // Convert nanoseconds to tokens per second
@@ -1567,6 +1569,7 @@ func TestAIMDDecreaseRateTriggerClamping(t *testing.T) {
 		limiter := &AIMDTokenBucketLimiter{
 			limiter: &TokenBucketLimiter{
 				buckets: newAtomicSliceUint64(1),
+				seed:    maphash.MakeSeed(),
 			},
 			rates:    newAtomicSliceFloat64(1),
 			rateMin:  1.0, // 1 token/sec
@@ -1646,6 +1649,7 @@ func TestAIMDDecreaseRateDefensiveClamping(t *testing.T) {
 		limiter := &AIMDTokenBucketLimiter{
 			limiter: &TokenBucketLimiter{
 				buckets: newAtomicSliceUint64(1),
+				seed:    maphash.MakeSeed(),
 			},
 			rates:    newAtomicSliceFloat64(1),
 			rateMin:  1.0,  // 1 token/sec

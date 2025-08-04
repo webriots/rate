@@ -160,10 +160,11 @@ func NewAIMDTokenBucketLimiter(
 // taken, false otherwise. This method is thread-safe and can be
 // called concurrently from multiple goroutines.
 func (a *AIMDTokenBucketLimiter) TakeToken(id []byte) bool {
+	now := nowfn()
 	index := a.limiter.index(id)
 	rate := a.rates.Get(index)
 	nano := nanoRate(a.rateUnit, rate)
-	return a.limiter.takeTokenInner(index, nano)
+	return a.limiter.takeTokenInner(index, nano, now)
 }
 
 // Check returns whether a token would be available for the given ID
@@ -173,10 +174,11 @@ func (a *AIMDTokenBucketLimiter) TakeToken(id []byte) bool {
 // This method is thread-safe and can be called concurrently from
 // multiple goroutines.
 func (a *AIMDTokenBucketLimiter) Check(id []byte) bool {
+	now := nowfn()
 	index := a.limiter.index(id)
 	rate := a.rates.Get(index)
 	nano := nanoRate(a.rateUnit, rate)
-	return a.limiter.checkInner(index, nano)
+	return a.limiter.checkInner(index, nano, now)
 }
 
 // IncreaseRate additively increases the rate for the bucket

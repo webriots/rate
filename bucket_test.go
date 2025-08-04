@@ -478,15 +478,16 @@ func TestTokenBucketCheckInner(t *testing.T) {
 	slowRate := limiter.nanosPerToken * 2 // Slower refill
 
 	// Initially all should return true
-	if !limiter.checkInner(index, fastRate) {
+	now := nowfn()
+	if !limiter.checkInner(index, fastRate, now) {
 		t.Error("Fast rate check should be true initially")
 	}
 
-	if !limiter.checkInner(index, normalRate) {
+	if !limiter.checkInner(index, normalRate, now) {
 		t.Error("Normal rate check should be true initially")
 	}
 
-	if !limiter.checkInner(index, slowRate) {
+	if !limiter.checkInner(index, slowRate, now) {
 		t.Error("Slow rate check should be true initially")
 	}
 
@@ -502,15 +503,16 @@ func TestTokenBucketCheckInner(t *testing.T) {
 	}
 
 	// All rates should return false immediately after exhaustion
-	if limiter.checkInner(index, fastRate) {
+	now = nowfn()
+	if limiter.checkInner(index, fastRate, now) {
 		t.Error("Fast rate check should be false after exhaustion")
 	}
 
-	if limiter.checkInner(index, normalRate) {
+	if limiter.checkInner(index, normalRate, now) {
 		t.Error("Normal rate check should be false after exhaustion")
 	}
 
-	if limiter.checkInner(index, slowRate) {
+	if limiter.checkInner(index, slowRate, now) {
 		t.Error("Slow rate check should be false after exhaustion")
 	}
 
@@ -518,15 +520,17 @@ func TestTokenBucketCheckInner(t *testing.T) {
 	tick(500 * time.Millisecond)
 
 	// Test different rate refill states without capturing results
-	_ = limiter.checkInner(index, fastRate)
-	_ = limiter.checkInner(index, normalRate)
-	_ = limiter.checkInner(index, slowRate)
+	now = nowfn()
+	_ = limiter.checkInner(index, fastRate, now)
+	_ = limiter.checkInner(index, normalRate, now)
+	_ = limiter.checkInner(index, slowRate, now)
 
 	// After full refill time for normal rate
 	tick(time.Second)
 
 	// Normal rate should definitely have refilled
-	if !limiter.checkInner(index, normalRate) {
+	now = nowfn()
+	if !limiter.checkInner(index, normalRate, now) {
 		t.Error("Normal rate should refill after 1 second")
 	}
 }

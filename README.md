@@ -18,6 +18,7 @@ A high-performance rate limiter library for Go applications with multiple rate l
 - **Multiple Rate Limiting Strategies**:
   - TokenBucketLimiter: Classic token bucket algorithm with multiple buckets
   - AIMDTokenBucketLimiter: Additive-Increase/Multiplicative-Decrease algorithm inspired by TCP congestion control
+  - RotatingTokenBucketRateLimiter: Collision-resistant rate limiter with periodic hash seed rotation
 - **Highly Scalable**: Designed for high-throughput concurrent systems
   - Multiple buckets distribute load across different request IDs
   - Low contention design for concurrent access patterns
@@ -133,6 +134,55 @@ func processRequest() bool {
 ```
 
 [Go Playground](https://go.dev/play/p/2AEPxptA2xd)
+
+### Rotating Token Bucket Rate Limiter
+
+```go
+package main
+
+import (
+	"fmt"
+	"time"
+
+	"github.com/webriots/rate"
+)
+
+func main() {
+	// Create a rotating token bucket limiter:
+	// - 1024 buckets (automatically rounded to nearest power of 2 if not already a power of 2)
+	// - 10 tokens burst capacity
+	// - 100 tokens per second refill rate
+	// - Rotate hash seeds every 30 seconds
+	limiter, err := rate.NewRotatingTokenBucketRateLimiter(
+		1024,           // numBuckets
+		10,             // burstCapacity
+		100,            // refillRate
+		time.Second,    // refillRateUnit
+		30*time.Second, // rotationRate
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	// Use just like TokenBucketLimiter
+	id := []byte("user-456")
+
+	if limiter.TakeToken(id) {
+		fmt.Println("Token acquired, proceeding with request")
+		// ... process the request
+	} else {
+		fmt.Println("Rate limited, try again later")
+		// ... return rate limit error
+	}
+
+	// Check without consuming
+	if limiter.Check(id) {
+		fmt.Println("Token would be available")
+	}
+}
+```
+
+[Go Playground](https://go.dev/play/p/fw3z0BzorV3)
 
 ## Detailed Usage
 
@@ -316,6 +366,121 @@ rateMin ────────────────────────
 - Rate changes are applied atomically using lock-free operations
 - Rate information is stored alongside token information in the bucket
 
+### RotatingTokenBucketRateLimiter
+
+The Rotating Token Bucket Rate Limiter addresses a fundamental limitation of hash-based rate limiters: hash collisions between different IDs can cause unfair rate limiting. This limiter maintains two TokenBucketLimiters with different hash seeds and periodically rotates between them to minimize collision impact.
+
+```go
+limiter, err := rate.NewRotatingTokenBucketRateLimiter(
+    numBuckets,     // Number of buckets (automatically rounded to nearest power of 2 if not already a power of 2)
+    burstCapacity,  // Maximum tokens per bucket
+    refillRate,     // Rate at which tokens are refilled
+    refillRateUnit, // Time unit for refill rate
+    rotationRate,   // How often to rotate hash seeds
+)
+```
+
+#### Parameters:
+
+- `numBuckets`: Number of token buckets per limiter (automatically rounded up to the nearest power of two if not already a power of two)
+- `burstCapacity`: Maximum number of tokens that can be consumed at once
+- `refillRate`: Rate at which tokens are refilled
+- `refillRateUnit`: Time unit for refill rate calculations (e.g., time.Second)
+- `rotationRate`: How often to rotate the bucket pairs and generate new hash seeds (must be a positive duration)
+
+#### Input Validation:
+
+The constructor performs validation on all parameters and returns descriptive errors:
+
+- `refillRate` must be a positive, finite number (not NaN, infinity, zero, or negative)
+- `refillRateUnit` must represent a positive duration
+- `rotationRate` must represent a positive duration
+- The product of `refillRate` and `refillRateUnit` must not overflow when converted to nanoseconds
+
+#### Collision-Resistant Algorithm Explained
+
+The rotating limiter solves the hash collision problem by maintaining two token bucket limiters and periodically rotating their roles:
+
+```
+Time: 0s                    Time: 30s (rotation)           Time: 60s (rotation)
+┌─────────────────────────┐ ┌─────────────────────────┐ ┌─────────────────────────┐
+│ Limiter A (checked)     │ │ Limiter B (checked)     │ │ Limiter C (checked)     │
+│ - seed: 0x1234          │→│ - seed: 0x5678          │→│ - seed: 0x9ABC          │
+│ - decision: ✓ enforced  │ │ - decision: ✓ enforced  │ │ - decision: ✓ enforced  │
+│                         │ │                         │ │                         │
+│ Limiter B (ignored)     │ │ Limiter C (ignored)     │ │ Limiter D (ignored)     │
+│ - seed: 0x5678          │ │ - seed: 0x9ABC          │ │ - seed: 0xDEF0          │
+│ - decision: ✗ discarded │ │ - decision: ✗ discarded │ │ - decision: ✗ discarded │
+└─────────────────────────┘ └─────────────────────────┘ └─────────────────────────┘
+
+Hash Collision Scenario:
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│ ID "user-123" and "user-456" both hash to bucket 42 in Limiter A (collision!)   │
+│ They compete for the same tokens → unfair rate limiting                         │
+│                                                                                 │
+│ After rotation (30s later):                                                     │
+│ - Limiter B becomes "checked" with seed 0x5678                                  │
+│ - Very likely: "user-123" → bucket 15, "user-456" → bucket 73 (no collision!)   │
+│ - Collision resolved! Each ID now has independent rate limiting                 │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**How it works:**
+
+1. **Dual Limiter Architecture**:
+   - Maintains two identical TokenBucketLimiters with different hash seeds
+   - "Checked" limiter: its result determines rate limiting decisions
+   - "Ignored" limiter: maintains state but its result is discarded
+
+2. **Token Consumption Strategy**:
+   - Each `TakeToken()` call consumes tokens from **both** limiters
+   - Only the "checked" limiter's success/failure determines the result
+   - **Trade-off**: 2x token consumption rate for collision resistance
+
+3. **Periodic Rotation**:
+   - Every `rotationRate` duration, the limiters rotate roles:
+     - Old "ignored" becomes new "checked" (with established state)
+     - Copy of new "checked" becomes new "ignored" (with fresh hash seed)
+   - Hash collisions are broken by the new hash seed
+
+4. **Collision Impact Mitigation**:
+   - Hash collisions only persist for maximum one `rotationRate` period
+   - Different hash seeds make collisions probabilistically unlikely after rotation
+   - Provides better long-term fairness compared to static hash seeds
+
+**Benefits:**
+- ✅ **Transient Collisions**: Hash collisions are temporary (max duration = rotation period)
+- ✅ **Better Fairness**: Different IDs are less likely to be permanently penalized
+- ✅ **Automatic Recovery**: System self-heals from collision scenarios
+- ✅ **Drop-in Replacement**: Same interface as TokenBucketLimiter
+
+**Trade-offs:**
+- ❌ **Higher Resource Usage**: 2x token consumption and memory usage
+- ❌ **Slight Performance Overhead**: ~2x slower than single TokenBucketLimiter
+- ❌ **Configuration Complexity**: Additional `rotationRate` parameter to tune
+
+#### Implementation Details:
+
+- Uses atomic operations for thread-safe rotation
+- Both limiters are always synchronized with the same timestamp
+- Rotation is triggered lazily during token operations
+- Memory usage is approximately 2x that of TokenBucketLimiter
+- Hash seed generation uses Go's `hash/maphash.MakeSeed()` for quality randomness
+
+#### When to Use Rotating Token Bucket Limiter:
+
+**Use when:**
+- Hash collision fairness is critical for your application
+- You have many distinct IDs with similar access patterns
+- Temporary rate limit inaccuracy is acceptable for better long-term fairness
+- You can afford 2x resource usage for improved collision resistance
+
+**Don't use when:**
+- Resource efficiency is more important than collision fairness
+- You have very few distinct IDs (low collision probability)
+- Your rate limits are very loose (collisions don't significantly impact users)
+- Real-time precision is more important than long-term fairness
+
 ## Performance
 
 The library is optimized for high performance and efficiency:
@@ -347,22 +512,27 @@ BenchmarkTokenBucketContention-10               655109293                1.827 n
 BenchmarkTokenBucketWithRefill-10               165840525                7.110 ns/op           0 B/op          0 allocs/op
 
 # Bucket creation (different sizes)
-BenchmarkTokenBucketCreateSmall-10              16929116                71.00 ns/op          192 B/op          2 allocs/op
-BenchmarkTokenBucketCreateMedium-10               664831              1820 ns/op            8256 B/op          2 allocs/op
-BenchmarkTokenBucketCreateLarge-10                 45537             25471 ns/op          131137 B/op          2 allocs/op
+BenchmarkTokenBucketCreateSmall-10               16929116               71.00 ns/op          192 B/op          2 allocs/op
+BenchmarkTokenBucketCreateMedium-10                664831             1820 ns/op            8256 B/op          2 allocs/op
+BenchmarkTokenBucketCreateLarge-10                  45537            25471 ns/op          131137 B/op          2 allocs/op
 
 # Internals
 BenchmarkTokenBucketPacked-10                   1000000000               0.3103 ns/op          0 B/op          0 allocs/op
 BenchmarkTokenBucketUnpack-10                   1000000000               0.3103 ns/op          0 B/op          0 allocs/op
-BenchmarkTokenBucketIndex-10                    265611426                4.510 ns/op           0 B/op          0 allocs/op
-BenchmarkTokenBucketRefill-10                   591397021                2.023 ns/op           0 B/op          0 allocs/op
+BenchmarkTokenBucketIndex-10                     265611426               4.510 ns/op           0 B/op          0 allocs/op
+BenchmarkTokenBucketRefill-10                    591397021               2.023 ns/op           0 B/op          0 allocs/op
 
 # Real-world scenarios
-BenchmarkTokenBucketManyIDs-10                  139485549                8.590 ns/op           0 B/op          0 allocs/op
-BenchmarkTokenBucketDynamicID-10                93835521                12.87 ns/op            0 B/op          0 allocs/op
-BenchmarkTokenBucketRealWorldRequestRate-10     853565757                1.401 ns/op           0 B/op          0 allocs/op
-BenchmarkTokenBucketHighContention-10           579507058                2.068 ns/op           0 B/op          0 allocs/op
-BenchmarkTokenBucketWithSystemClock-10          459682273                2.605 ns/op           0 B/op          0 allocs/op
+BenchmarkTokenBucketManyIDs-10                   139485549               8.590 ns/op           0 B/op          0 allocs/op
+BenchmarkTokenBucketDynamicID-10                 93835521               12.87 ns/op            0 B/op          0 allocs/op
+BenchmarkTokenBucketRealWorldRequestRate-10      853565757               1.401 ns/op           0 B/op          0 allocs/op
+BenchmarkTokenBucketHighContention-10            579507058               2.068 ns/op           0 B/op          0 allocs/op
+BenchmarkTokenBucketWithSystemClock-10           459682273               2.605 ns/op           0 B/op          0 allocs/op
+
+# Rotating limiter operations
+BenchmarkRotatingTokenBucketLimiterTakeToken-10   80090768              14.93 ns/op            0 B/op          0 allocs/op
+BenchmarkRotatingTokenBucketLimiterCheck-10       91934064              13.16 ns/op            0 B/op          0 allocs/op
+BenchmarkRotatingTokenBucketLimiterConcurrent-10 687345256               1.744 ns/op           0 B/op          0 allocs/op
 ```
 
 ## Advanced Usage

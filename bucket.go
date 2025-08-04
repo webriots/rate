@@ -9,6 +9,11 @@ import (
 	"github.com/webriots/rate/time56"
 )
 
+type Limiter interface {
+	Check([]byte) bool
+	TakeToken([]byte) bool
+}
+
 // TokenBucketLimiter implements the token bucket algorithm for rate
 // limiting. It maintains multiple buckets to distribute load and
 // reduce contention. Each bucket has a fixed capacity and refills at
@@ -17,6 +22,7 @@ type TokenBucketLimiter struct {
 	buckets       atomicSliceUint64 // Array of token buckets
 	burstCapacity uint8             // Maximum tokens per bucket
 	nanosPerToken int64             // Nanoseconds per token refill
+	seed          maphash.Seed      // Used for index bucket hash gen
 }
 
 // NewTokenBucketLimiter creates a new token bucket rate limiter with
@@ -77,6 +83,7 @@ func NewTokenBucketLimiter(
 		buckets:       buckets,
 		burstCapacity: burstCapacity,
 		nanosPerToken: nanoRate(refillRateUnit, refillRate),
+		seed:          maphash.MakeSeed(),
 	}, nil
 }
 
@@ -85,7 +92,11 @@ func NewTokenBucketLimiter(
 // checking if an operation would be rate limited before attempting
 // it. Returns true if a token would be available, false otherwise.
 func (t *TokenBucketLimiter) Check(id []byte) bool {
-	return t.checkInner(t.index(id), t.nanosPerToken)
+	return t.checkWithNow(id, nowfn())
+}
+
+func (t *TokenBucketLimiter) checkWithNow(id []byte, now int64) bool {
+	return t.checkInner(t.index(id), t.nanosPerToken, now)
 }
 
 // TakeToken attempts to take a token for the given ID. It returns
@@ -93,17 +104,21 @@ func (t *TokenBucketLimiter) Check(id []byte) bool {
 // should be rate limited. This method is thread-safe and can be
 // called concurrently from multiple goroutines.
 func (t *TokenBucketLimiter) TakeToken(id []byte) bool {
-	return t.takeTokenInner(t.index(id), t.nanosPerToken)
+	return t.takeTokenWithNow(id, nowfn())
+}
+
+func (t *TokenBucketLimiter) takeTokenWithNow(id []byte, now int64) bool {
+	return t.takeTokenInner(t.index(id), t.nanosPerToken, now)
 }
 
 // checkInner is an internal method that checks if a token is
 // available in the bucket at the specified index using the given
 // refill rate. This is used by Check and is also used by other
 // limiters that wrap this one.
-func (t *TokenBucketLimiter) checkInner(index int, rate int64) bool {
+func (t *TokenBucketLimiter) checkInner(index int, rate int64, now int64) bool {
 	existing := t.buckets.Get(index)
 	unpacked := unpack(existing)
-	refilled := unpacked.refill(nowfn(), rate, t.burstCapacity)
+	refilled := unpacked.refill(now, rate, t.burstCapacity)
 	return refilled.level > 0
 }
 
@@ -111,8 +126,7 @@ func (t *TokenBucketLimiter) checkInner(index int, rate int64) bool {
 // from the bucket at the specified index using the given refill rate.
 // This is used by TakeToken and is also used by other limiters that
 // wrap this one. It uses atomic operations to ensure thread safety.
-func (t *TokenBucketLimiter) takeTokenInner(index int, rate int64) bool {
-	now := nowfn()
+func (t *TokenBucketLimiter) takeTokenInner(index int, rate int64, now int64) bool {
 	for {
 		existing := t.buckets.Get(index)
 		unpacked := unpack(existing)
@@ -131,14 +145,11 @@ func (t *TokenBucketLimiter) takeTokenInner(index int, rate int64) bool {
 	}
 }
 
-// seed is used globally for index bucket hash generation.
-var seed = maphash.MakeSeed()
-
 // index calculates the bucket index for the given ID using maphash.
 // The result is masked to ensure it falls within the range of valid
 // buckets.
 func (t *TokenBucketLimiter) index(id []byte) int {
-	return int(maphash.Bytes(seed, id) & uint64(t.buckets.Len()-1))
+	return int(maphash.Bytes(t.seed, id) & uint64(t.buckets.Len()-1))
 }
 
 // tokenBucket represents a single token bucket with a certain level
