@@ -403,26 +403,26 @@ The rotating limiter solves the hash collision problem by maintaining two token 
 
 ```
 Time: 0s                    Time: 30s (rotation)           Time: 60s (rotation)
-┌─────────────────────────┐ ┌─────────────────────────┐   ┌─────────────────────────┐
-│ Limiter A (checked)     │ │ Limiter B (checked)     │   │ Limiter C (checked)     │
-│ - seed: 0x1234          │→│ - seed: 0x5678          │→  │ - seed: 0x9ABC          │
-│ - decision: ✓ enforced  │ │ - decision: ✓ enforced  │   │ - decision: ✓ enforced  │
-│                         │ │                         │   │                         │
-│ Limiter B (ignored)     │ │ Limiter C (ignored)     │   │ Limiter D (ignored)     │
-│ - seed: 0x5678          │ │ - seed: 0x9ABC          │   │ - seed: 0xDEF0          │
-│ - decision: ✗ discarded │ │ - decision: ✗ discarded │   │ - decision: ✗ discarded │
-└─────────────────────────┘ └─────────────────────────┘   └─────────────────────────┘
+┌─────────────────────────┐ ┌─────────────────────────┐ ┌─────────────────────────┐
+│ Limiter A (checked)     │ │ Limiter B (checked)     │ │ Limiter C (checked)     │
+│ - seed: 0x1234          │→│ - seed: 0x5678          │→│ - seed: 0x9ABC          │
+│ - decision: ✓ enforced  │ │ - decision: ✓ enforced  │ │ - decision: ✓ enforced  │
+│                         │ │                         │ │                         │
+│ Limiter B (ignored)     │ │ Limiter C (ignored)     │ │ Limiter D (ignored)     │
+│ - seed: 0x5678          │ │ - seed: 0x9ABC          │ │ - seed: 0xDEF0          │
+│ - decision: ✗ discarded │ │ - decision: ✗ discarded │ │ - decision: ✗ discarded │
+└─────────────────────────┘ └─────────────────────────┘ └─────────────────────────┘
 
 Hash Collision Scenario:
-┌───────────────────────────────────────────────────────────────────────────────────┐
-│ ID "user-123" and "user-456" both hash to bucket 42 in Limiter A (collision!)     │
-│ They compete for the same tokens → unfair rate limiting                           │
-│                                                                                   │
-│ After rotation (30s later):                                                       │
-│ - Limiter B becomes "checked" with seed 0x5678                                    │
-│ - Very likely: "user-123" → bucket 15, "user-456" → bucket 73 (no collision!)     │
-│ - Collision resolved! Each ID now has independent rate limiting                   │
-└───────────────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│ ID "user-123" and "user-456" both hash to bucket 42 in Limiter A (collision!)   │
+│ They compete for the same tokens → unfair rate limiting                         │
+│                                                                                 │
+│ After rotation (30s later):                                                     │
+│ - Limiter B becomes "checked" with seed 0x5678                                  │
+│ - Very likely: "user-123" → bucket 15, "user-456" → bucket 73 (no collision!)   │
+│ - Collision resolved! Each ID now has independent rate limiting                 │
+└─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 **How it works:**
