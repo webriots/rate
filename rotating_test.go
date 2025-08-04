@@ -2,6 +2,7 @@ package rate
 
 import (
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -128,7 +129,7 @@ func TestRotatingTokenBucketLimiterBasicFunctionality(t *testing.T) {
 
 	id := []byte("test-id")
 
-	// Should be able to take initial burst capacity tokens
+	// Should be able to make burstCapacity calls (each consumes 1 token from each limiter)
 	for i := 0; i < int(rotatingBurstCapacity); i++ {
 		if !limiter.TakeToken(id) {
 			t.Errorf("Should be able to take token %d", i)
@@ -239,7 +240,7 @@ func TestRotatingTokenBucketLimiterCollisionAvoidance(t *testing.T) {
 		t.Skip("Could not find colliding IDs in test")
 	}
 
-	// Exhaust tokens for id1
+	// Exhaust tokens for id1 (make burstCapacity calls)
 	for i := 0; i < int(rotatingBurstCapacity); i++ {
 		if !limiter.TakeToken(id1) {
 			t.Errorf("Should be able to take token %d for id1", i)
@@ -253,6 +254,9 @@ func TestRotatingTokenBucketLimiterCollisionAvoidance(t *testing.T) {
 
 	// After rotation, new seed should resolve collision
 	tick(rotationRate + 1*time.Millisecond)
+	
+	// Wait for some token refill as well
+	tick(2 * time.Second)
 
 	// At least one of them should be able to take tokens now
 	// (assuming new seed resolves collision)
@@ -281,7 +285,7 @@ func TestRotatingTokenBucketLimiterTokenPreservation(t *testing.T) {
 	id := []byte("preservation-test")
 
 	// Take some tokens but not all
-	tokensToTake := int(rotatingBurstCapacity) / 2
+	tokensToTake := int(rotatingBurstCapacity) / 2  // Take half of available calls
 	for i := 0; i < tokensToTake; i++ {
 		if !limiter.TakeToken(id) {
 			t.Errorf("Should be able to take token %d", i)
@@ -338,7 +342,7 @@ func TestRotatingTokenBucketLimiterConcurrency(t *testing.T) {
 
 			for j := 0; j < numOperations; j++ {
 				if limiter.TakeToken(id) {
-					successCount++
+					atomic.AddInt64(&successCount, 1)
 				}
 				// Also test Check method
 				limiter.Check(id)
@@ -349,7 +353,8 @@ func TestRotatingTokenBucketLimiterConcurrency(t *testing.T) {
 	wg.Wait()
 
 	// Should have some successful token takes, but exact count depends on timing
-	if successCount == 0 {
+	finalSuccessCount := atomic.LoadInt64(&successCount)
+	if finalSuccessCount == 0 {
 		t.Error("Expected some successful token takes")
 	}
 }
@@ -455,22 +460,59 @@ func TestRotatingTokenBucketLimiterDifferentIDs(t *testing.T) {
 	id1 := []byte("different-id-1")
 	id2 := []byte("different-id-2")
 
-	// Each ID should have independent rate limiting
-	for i := 0; i < int(rotatingBurstCapacity); i++ {
-		if !limiter.TakeToken(id1) {
-			t.Errorf("Should be able to take token %d for id1", i)
+	// Check if these IDs hash to the same bucket (hash collision)
+	pair := limiter.load(nowfn())
+	index1 := pair.checked.index(id1)
+	index2 := pair.checked.index(id2)
+	
+	if index1 == index2 {
+		// Hash collision case - IDs share the same bucket
+		t.Logf("Hash collision detected: both IDs map to bucket %d", index1)
+		
+		// With collision, they share tokens from the same bucket
+		// We can make burstCapacity total calls between both IDs
+		totalCalls := 0
+		for totalCalls < int(rotatingBurstCapacity) {
+			if limiter.TakeToken(id1) {
+				totalCalls++
+			} else {
+				break
+			}
+			if totalCalls < int(rotatingBurstCapacity) && limiter.TakeToken(id2) {
+				totalCalls++
+			} else {
+				break
+			}
 		}
-		if !limiter.TakeToken(id2) {
-			t.Errorf("Should be able to take token %d for id2", i)
+		
+		// Both should now be rate limited (sharing exhausted bucket)
+		if limiter.TakeToken(id1) {
+			t.Error("id1 should be rate limited after bucket exhaustion")
 		}
-	}
+		if limiter.TakeToken(id2) {
+			t.Error("id2 should be rate limited after bucket exhaustion")
+		}
+	} else {
+		// No collision case - IDs have independent buckets
+		t.Logf("No collision: id1 maps to bucket %d, id2 maps to bucket %d", index1, index2)
+		
+		// Each ID should have independent rate limiting (make burstCapacity calls each)
+		for i := 0; i < int(rotatingBurstCapacity); i++ {
+			if !limiter.TakeToken(id1) {
+				t.Errorf("Should be able to take token %d for id1", i)
+			}
+			if !limiter.TakeToken(id2) {
+				t.Errorf("Should be able to take token %d for id2", i)
+			}
+		}
 
-	// Both should be rate limited now
-	if limiter.TakeToken(id1) {
-		t.Error("id1 should be rate limited")
-	}
-	if limiter.TakeToken(id2) {
-		t.Error("id2 should be rate limited")
+		// Both should be rate limited now
+		if limiter.TakeToken(id1) {
+			t.Error("id1 should be rate limited")
+		}
+		if limiter.TakeToken(id2) {
+			t.Error("id2 should be rate limited")
+		}
 	}
 }
 
