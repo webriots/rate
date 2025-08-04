@@ -512,27 +512,27 @@ BenchmarkTokenBucketContention-10               655109293                1.827 n
 BenchmarkTokenBucketWithRefill-10               165840525                7.110 ns/op           0 B/op          0 allocs/op
 
 # Bucket creation (different sizes)
-BenchmarkTokenBucketCreateSmall-10              16929116                71.00 ns/op          192 B/op          2 allocs/op
-BenchmarkTokenBucketCreateMedium-10               664831              1820 ns/op            8256 B/op          2 allocs/op
-BenchmarkTokenBucketCreateLarge-10                 45537             25471 ns/op          131137 B/op          2 allocs/op
+BenchmarkTokenBucketCreateSmall-10               16929116               71.00 ns/op          192 B/op          2 allocs/op
+BenchmarkTokenBucketCreateMedium-10                664831             1820 ns/op            8256 B/op          2 allocs/op
+BenchmarkTokenBucketCreateLarge-10                  45537            25471 ns/op          131137 B/op          2 allocs/op
 
 # Internals
 BenchmarkTokenBucketPacked-10                   1000000000               0.3103 ns/op          0 B/op          0 allocs/op
 BenchmarkTokenBucketUnpack-10                   1000000000               0.3103 ns/op          0 B/op          0 allocs/op
-BenchmarkTokenBucketIndex-10                    265611426                4.510 ns/op           0 B/op          0 allocs/op
-BenchmarkTokenBucketRefill-10                   591397021                2.023 ns/op           0 B/op          0 allocs/op
+BenchmarkTokenBucketIndex-10                     265611426               4.510 ns/op           0 B/op          0 allocs/op
+BenchmarkTokenBucketRefill-10                    591397021               2.023 ns/op           0 B/op          0 allocs/op
 
 # Real-world scenarios
-BenchmarkTokenBucketManyIDs-10                  139485549                8.590 ns/op           0 B/op          0 allocs/op
-BenchmarkTokenBucketDynamicID-10                93835521                12.87 ns/op            0 B/op          0 allocs/op
-BenchmarkTokenBucketRealWorldRequestRate-10     853565757                1.401 ns/op           0 B/op          0 allocs/op
-BenchmarkTokenBucketHighContention-10           579507058                2.068 ns/op           0 B/op          0 allocs/op
-BenchmarkTokenBucketWithSystemClock-10          459682273                2.605 ns/op           0 B/op          0 allocs/op
+BenchmarkTokenBucketManyIDs-10                   139485549               8.590 ns/op           0 B/op          0 allocs/op
+BenchmarkTokenBucketDynamicID-10                 93835521               12.87 ns/op            0 B/op          0 allocs/op
+BenchmarkTokenBucketRealWorldRequestRate-10      853565757               1.401 ns/op           0 B/op          0 allocs/op
+BenchmarkTokenBucketHighContention-10            579507058               2.068 ns/op           0 B/op          0 allocs/op
+BenchmarkTokenBucketWithSystemClock-10           459682273               2.605 ns/op           0 B/op          0 allocs/op
 
 # Rotating limiter operations
-BenchmarkRotatingTokenBucketLimiterTakeToken-10  79731570               15.03 ns/op           0 B/op          0 allocs/op
-BenchmarkRotatingTokenBucketLimiterCheck-10      92016601               13.18 ns/op           0 B/op          0 allocs/op
-BenchmarkRotatingTokenBucketLimiterConcurrent-10 676278586               1.785 ns/op           0 B/op          0 allocs/op
+BenchmarkRotatingTokenBucketLimiterTakeToken-10   80090768              14.93 ns/op            0 B/op          0 allocs/op
+BenchmarkRotatingTokenBucketLimiterCheck-10       91934064              13.16 ns/op            0 B/op          0 allocs/op
+BenchmarkRotatingTokenBucketLimiterConcurrent-10 687345256               1.744 ns/op           0 B/op          0 allocs/op
 ```
 
 ## Advanced Usage
