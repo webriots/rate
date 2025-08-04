@@ -254,7 +254,7 @@ func TestRotatingTokenBucketLimiterCollisionAvoidance(t *testing.T) {
 
 	// After rotation, new seed should resolve collision
 	tick(rotationRate + 1*time.Millisecond)
-	
+
 	// Wait for some token refill as well
 	tick(2 * time.Second)
 
@@ -285,7 +285,7 @@ func TestRotatingTokenBucketLimiterTokenPreservation(t *testing.T) {
 	id := []byte("preservation-test")
 
 	// Take some tokens but not all
-	tokensToTake := int(rotatingBurstCapacity) / 2  // Take half of available calls
+	tokensToTake := int(rotatingBurstCapacity) / 2 // Take half of available calls
 	for i := 0; i < tokensToTake; i++ {
 		if !limiter.TakeToken(id) {
 			t.Errorf("Should be able to take token %d", i)
@@ -464,11 +464,11 @@ func TestRotatingTokenBucketLimiterDifferentIDs(t *testing.T) {
 	pair := limiter.load(nowfn())
 	index1 := pair.checked.index(id1)
 	index2 := pair.checked.index(id2)
-	
+
 	if index1 == index2 {
 		// Hash collision case - IDs share the same bucket
 		t.Logf("Hash collision detected: both IDs map to bucket %d", index1)
-		
+
 		// With collision, they share tokens from the same bucket
 		// We can make burstCapacity total calls between both IDs
 		totalCalls := 0
@@ -484,7 +484,7 @@ func TestRotatingTokenBucketLimiterDifferentIDs(t *testing.T) {
 				break
 			}
 		}
-		
+
 		// Both should now be rate limited (sharing exhausted bucket)
 		if limiter.TakeToken(id1) {
 			t.Error("id1 should be rate limited after bucket exhaustion")
@@ -495,7 +495,7 @@ func TestRotatingTokenBucketLimiterDifferentIDs(t *testing.T) {
 	} else {
 		// No collision case - IDs have independent buckets
 		t.Logf("No collision: id1 maps to bucket %d, id2 maps to bucket %d", index1, index2)
-		
+
 		// Each ID should have independent rate limiting (make burstCapacity calls each)
 		for i := 0; i < int(rotatingBurstCapacity); i++ {
 			if !limiter.TakeToken(id1) {
