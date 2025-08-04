@@ -422,31 +422,31 @@ func TestRotatingTokenBucketLimiterConcurrentRotation(t *testing.T) {
 // TestRotatingTokenBucketLimiterRotationInterval tests the RotationInterval method
 func TestRotatingTokenBucketLimiterRotationInterval(t *testing.T) {
 	tests := []struct {
-		name           string
-		burstCapacity  uint8
-		refillRate     float64
-		refillRateUnit time.Duration
+		name             string
+		burstCapacity    uint8
+		refillRate       float64
+		refillRateUnit   time.Duration
 		expectedInterval time.Duration
 	}{
 		{
-			name:           "fast rotation - 100/sec",
-			burstCapacity:  10,
-			refillRate:     100.0,
-			refillRateUnit: time.Second,
+			name:             "fast rotation - 100/sec",
+			burstCapacity:    10,
+			refillRate:       100.0,
+			refillRateUnit:   time.Second,
 			expectedInterval: 500 * time.Millisecond, // (10/100)*5 = 0.5s
 		},
 		{
-			name:           "slow rotation - 1/sec",
-			burstCapacity:  10,
-			refillRate:     1.0,
-			refillRateUnit: time.Second,
+			name:             "slow rotation - 1/sec",
+			burstCapacity:    10,
+			refillRate:       1.0,
+			refillRateUnit:   time.Second,
 			expectedInterval: 50 * time.Second, // (10/1)*5 = 50s
 		},
 		{
-			name:           "medium rotation - 10/sec",
-			burstCapacity:  5,
-			refillRate:     10.0,
-			refillRateUnit: time.Second,
+			name:             "medium rotation - 10/sec",
+			burstCapacity:    5,
+			refillRate:       10.0,
+			refillRateUnit:   time.Second,
 			expectedInterval: 2500 * time.Millisecond, // (5/10)*5 = 2.5s
 		},
 	}
