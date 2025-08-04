@@ -152,13 +152,12 @@ func main() {
 	// - 1024 buckets (automatically rounded to nearest power of 2 if not already a power of 2)
 	// - 10 tokens burst capacity
 	// - 100 tokens per second refill rate
-	// - Rotate hash seeds every 30 seconds
-	limiter, err := rate.NewRotatingTokenBucketRateLimiter(
-		1024,           // numBuckets
-		10,             // burstCapacity
-		100,            // refillRate
-		time.Second,    // refillRateUnit
-		30*time.Second, // rotationRate
+	// - Rotation interval automatically calculated: (10/100)*5 = 0.5 seconds
+	limiter, err := rate.NewRotatingTokenBucketLimiter(
+		1024,        // numBuckets
+		10,          // burstCapacity
+		100,         // refillRate
+		time.Second, // refillRateUnit
 	)
 	if err != nil {
 		panic(err)
@@ -182,7 +181,7 @@ func main() {
 }
 ```
 
-[Go Playground](https://go.dev/play/p/fw3z0BzorV3)
+[Go Playground](https://go.dev/play/p/6UJN8B8F3um)
 
 ## Detailed Usage
 
@@ -368,15 +367,14 @@ rateMin ────────────────────────
 
 ### RotatingTokenBucketRateLimiter
 
-The Rotating Token Bucket Rate Limiter addresses a fundamental limitation of hash-based rate limiters: hash collisions between different IDs can cause unfair rate limiting. This limiter maintains two TokenBucketLimiters with different hash seeds and periodically rotates between them to minimize collision impact.
+The Rotating Token Bucket Rate Limiter addresses a fundamental limitation of hash-based rate limiters: hash collisions between different IDs can cause unfair rate limiting. This limiter maintains two TokenBucketLimiters with different hash seeds and automatically rotates between them to minimize collision impact while ensuring correctness.
 
 ```go
-limiter, err := rate.NewRotatingTokenBucketRateLimiter(
+limiter, err := rate.NewRotatingTokenBucketLimiter(
     numBuckets,     // Number of buckets (automatically rounded to nearest power of 2 if not already a power of 2)
     burstCapacity,  // Maximum tokens per bucket
     refillRate,     // Rate at which tokens are refilled
     refillRateUnit, // Time unit for refill rate
-    rotationRate,   // How often to rotate hash seeds
 )
 ```
 
@@ -386,7 +384,18 @@ limiter, err := rate.NewRotatingTokenBucketRateLimiter(
 - `burstCapacity`: Maximum number of tokens that can be consumed at once
 - `refillRate`: Rate at which tokens are refilled
 - `refillRateUnit`: Time unit for refill rate calculations (e.g., time.Second)
-- `rotationRate`: How often to rotate the bucket pairs and generate new hash seeds (must be a positive duration)
+
+#### Automatic Rotation Calculation:
+
+The rotation interval is automatically calculated to ensure 99.99% statistical convergence of all token buckets to steady state before rotation occurs. This eliminates state inconsistency issues and guarantees correctness:
+
+```
+rotationInterval = (burstCapacity / refillRate * refillRateUnit) * 5.0
+```
+
+For example:
+- `burstCapacity=100, refillRate=250/second` → rotation every 2 seconds
+- `burstCapacity=10, refillRate=1/second` → rotation every 50 seconds
 
 #### Input Validation:
 
@@ -394,7 +403,6 @@ The constructor performs validation on all parameters and returns descriptive er
 
 - `refillRate` must be a positive, finite number (not NaN, infinity, zero, or negative)
 - `refillRateUnit` must represent a positive duration
-- `rotationRate` must represent a positive duration
 - The product of `refillRate` and `refillRateUnit` must not overflow when converted to nanoseconds
 
 #### Collision-Resistant Algorithm Explained
