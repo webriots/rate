@@ -414,15 +414,15 @@ Time: 0s                    Time: 30s (rotation)           Time: 60s (rotation)
 └─────────────────────────┘ └─────────────────────────┘   └─────────────────────────┘
 
 Hash Collision Scenario:
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│ ID "user-123" and "user-456" both hash to bucket 42 in Limiter A (collision!)  │
-│ They compete for the same tokens → unfair rate limiting                         │
-│                                                                                 │
-│ After rotation (30s later):                                                    │
-│ - Limiter B becomes "checked" with seed 0x5678                                 │
-│ - Very likely: "user-123" → bucket 15, "user-456" → bucket 73 (no collision!)│
-│ - Collision resolved! Each ID now has independent rate limiting                 │
-└─────────────────────────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────────────────────────┐
+│ ID "user-123" and "user-456" both hash to bucket 42 in Limiter A (collision!)     │
+│ They compete for the same tokens → unfair rate limiting                           │
+│                                                                                   │
+│ After rotation (30s later):                                                       │
+│ - Limiter B becomes "checked" with seed 0x5678                                    │
+│ - Very likely: "user-123" → bucket 15, "user-456" → bucket 73 (no collision!)     │
+│ - Collision resolved! Each ID now has independent rate limiting                   │
+└───────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 **How it works:**
