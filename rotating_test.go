@@ -17,12 +17,11 @@ const (
 )
 
 func DefaultRotatingLimiter() (*RotatingTokenBucketRateLimiter, error) {
-	return NewRotatingTokenBucketRateLimiter(
+	return NewRotatingTokenBucketLimiter(
 		rotatingNumBuckets,
 		rotatingBurstCapacity,
 		rotatingRatePerSecond,
 		time.Second,
-		rotatingRotationRate,
 	)
 }
 
@@ -34,7 +33,6 @@ func TestRotatingTokenBucketLimiterCreation(t *testing.T) {
 		burstCapacity     uint8
 		refillRate        float64
 		refillRateUnit    time.Duration
-		rotationRate      time.Duration
 		expectError       bool
 		expectedErrorText string
 	}{
@@ -44,28 +42,7 @@ func TestRotatingTokenBucketLimiterCreation(t *testing.T) {
 			burstCapacity:  10,
 			refillRate:     1.0,
 			refillRateUnit: time.Second,
-			rotationRate:   100 * time.Millisecond,
 			expectError:    false,
-		},
-		{
-			name:              "zero rotation rate",
-			numBuckets:        8,
-			burstCapacity:     10,
-			refillRate:        1.0,
-			refillRateUnit:    time.Second,
-			rotationRate:      0,
-			expectError:       true,
-			expectedErrorText: "rotationRate must represent a positive duration",
-		},
-		{
-			name:              "negative rotation rate",
-			numBuckets:        8,
-			burstCapacity:     10,
-			refillRate:        1.0,
-			refillRateUnit:    time.Second,
-			rotationRate:      -100 * time.Millisecond,
-			expectError:       true,
-			expectedErrorText: "rotationRate must represent a positive duration",
 		},
 		{
 			name:              "underlying limiter error - negative refill rate",
@@ -73,7 +50,6 @@ func TestRotatingTokenBucketLimiterCreation(t *testing.T) {
 			burstCapacity:     10,
 			refillRate:        -1.0,
 			refillRateUnit:    time.Second,
-			rotationRate:      100 * time.Millisecond,
 			expectError:       true,
 			expectedErrorText: "refillRate must be a positive, finite number",
 		},
@@ -83,7 +59,6 @@ func TestRotatingTokenBucketLimiterCreation(t *testing.T) {
 			burstCapacity:     10,
 			refillRate:        1.0,
 			refillRateUnit:    0,
-			rotationRate:      100 * time.Millisecond,
 			expectError:       true,
 			expectedErrorText: "refillRateUnit must represent a positive duration",
 		},
@@ -91,12 +66,11 @@ func TestRotatingTokenBucketLimiterCreation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			limiter, err := NewRotatingTokenBucketRateLimiter(
+			limiter, err := NewRotatingTokenBucketLimiter(
 				tt.numBuckets,
 				tt.burstCapacity,
 				tt.refillRate,
 				tt.refillRateUnit,
-				tt.rotationRate,
 			)
 
 			if tt.expectError {
@@ -166,13 +140,12 @@ func TestRotatingTokenBucketLimiterImplementsInterface(t *testing.T) {
 
 // TestRotatingTokenBucketLimiterRotation tests bucket rotation behavior
 func TestRotatingTokenBucketLimiterRotation(t *testing.T) {
-	rotationRate := 50 * time.Millisecond
-	limiter, err := NewRotatingTokenBucketRateLimiter(
+	// Note: rotation rate is now automatically calculated based on refill parameters
+	limiter, err := NewRotatingTokenBucketLimiter(
 		rotatingNumBuckets,
 		rotatingBurstCapacity,
-		rotatingRatePerSecond,
+		rotatingRatePerSecond, // 1.0 tokens/second
 		time.Second,
-		rotationRate,
 	)
 	if err != nil {
 		t.Fatalf("Failed to create limiter: %v", err)
@@ -191,7 +164,8 @@ func TestRotatingTokenBucketLimiterRotation(t *testing.T) {
 	}
 
 	// After rotation period, should get new pair
-	tick(rotationRate + 1*time.Millisecond)
+	// With burstCapacity=10, refillRate=1.0/sec: rotation = 10/1.0 * 5 = 50 seconds
+	tick(50*time.Second + 1*time.Millisecond)
 	pair3 := limiter.load(nowfn())
 	if pair1 == pair3 {
 		t.Error("Should get different pair after rotation period")
@@ -210,13 +184,12 @@ func TestRotatingTokenBucketLimiterRotation(t *testing.T) {
 
 // TestRotatingTokenBucketLimiterCollisionAvoidance tests collision handling
 func TestRotatingTokenBucketLimiterCollisionAvoidance(t *testing.T) {
-	rotationRate := 50 * time.Millisecond
-	limiter, err := NewRotatingTokenBucketRateLimiter(
+	// Note: rotation rate is now automatically calculated
+	limiter, err := NewRotatingTokenBucketLimiter(
 		4, // Small number of buckets to increase collision chances
 		rotatingBurstCapacity,
 		rotatingRatePerSecond,
 		time.Second,
-		rotationRate,
 	)
 	if err != nil {
 		t.Fatalf("Failed to create limiter: %v", err)
@@ -253,7 +226,8 @@ func TestRotatingTokenBucketLimiterCollisionAvoidance(t *testing.T) {
 	}
 
 	// After rotation, new seed should resolve collision
-	tick(rotationRate + 1*time.Millisecond)
+	// With burstCapacity=10, refillRate=1.0/sec: rotation = 10/1.0 * 5 = 50 seconds
+	tick(50*time.Second + 1*time.Millisecond)
 
 	// Wait for some token refill as well
 	tick(2 * time.Second)
@@ -268,56 +242,50 @@ func TestRotatingTokenBucketLimiterCollisionAvoidance(t *testing.T) {
 	}
 }
 
-// TestRotatingTokenBucketLimiterTokenPreservation ensures tokens aren't lost during rotation
-func TestRotatingTokenBucketLimiterTokenPreservation(t *testing.T) {
-	rotationRate := 50 * time.Millisecond
-	limiter, err := NewRotatingTokenBucketRateLimiter(
+// TestRotatingTokenBucketLimiterSteadyStateConvergence tests that rotation works correctly
+// when buckets reach steady state before rotation occurs
+func TestRotatingTokenBucketLimiterSteadyStateConvergence(t *testing.T) {
+	// Use faster refill rate to get shorter rotation intervals for testing
+	limiter, err := NewRotatingTokenBucketLimiter(
 		rotatingNumBuckets,
-		rotatingBurstCapacity,
-		rotatingRatePerSecond,
+		5,    // smaller burst capacity
+		10.0, // higher refill rate: 5/10 * 5 = 2.5 second rotation
 		time.Second,
-		rotationRate,
 	)
 	if err != nil {
 		t.Fatalf("Failed to create limiter: %v", err)
 	}
 
-	id := []byte("preservation-test")
+	id := []byte("convergence-test")
 
-	// Take some tokens but not all
-	tokensToTake := int(rotatingBurstCapacity) / 2 // Take half of available calls
-	for i := 0; i < tokensToTake; i++ {
+	// Take all available tokens initially
+	for i := 0; i < 5; i++ {
 		if !limiter.TakeToken(id) {
-			t.Errorf("Should be able to take token %d", i)
+			t.Errorf("Should be able to take initial token %d", i)
 		}
 	}
 
-	// Should still have tokens available
-	if !limiter.Check(id) {
-		t.Error("Should still have tokens available")
-	}
-
-	// Trigger rotation
-	tick(rotationRate + 1*time.Millisecond)
-
-	// Should still have tokens available after rotation
-	// (because the old bucket becomes the new ignored bucket,
-	// and we take from both checked and ignored)
-	if !limiter.Check(id) {
-		t.Error("Should still have tokens available after rotation")
-	}
-
-	// Take remaining tokens
-	remaining := int(rotatingBurstCapacity) - tokensToTake
-	for i := 0; i < remaining; i++ {
-		if !limiter.TakeToken(id) {
-			t.Errorf("Should be able to take remaining token %d", i)
-		}
-	}
-
-	// Now should be rate limited
+	// Should be rate limited now
 	if limiter.TakeToken(id) {
 		t.Error("Should be rate limited after taking all tokens")
+	}
+
+	// Wait for less than rotation time but enough for some refill
+	tick(1 * time.Second) // 10 tokens should refill, capped at burst capacity of 5
+
+	// Should have tokens available due to refill (not rotation)
+	if !limiter.Check(id) {
+		t.Error("Tokens should have refilled after 1 second")
+	}
+
+	// Trigger rotation after steady state convergence
+	// With burstCapacity=5, refillRate=10/sec: rotation = 5/10 * 5 = 2.5 seconds
+	tick(2*time.Second + 500*time.Millisecond) // Total 3.5s elapsed
+
+	// After rotation and steady state convergence, limiter should work normally
+	// Both checked and ignored buckets should have similar token levels
+	if !limiter.Check(id) {
+		t.Error("Should have tokens available after steady state rotation")
 	}
 }
 
@@ -361,13 +329,12 @@ func TestRotatingTokenBucketLimiterConcurrency(t *testing.T) {
 
 // TestRotatingTokenBucketLimiterLoadLogic tests the load method specifically
 func TestRotatingTokenBucketLimiterLoadLogic(t *testing.T) {
-	rotationRate := 100 * time.Millisecond
-	limiter, err := NewRotatingTokenBucketRateLimiter(
+	// Note: rotation rate is now automatically calculated
+	limiter, err := NewRotatingTokenBucketLimiter(
 		rotatingNumBuckets,
 		rotatingBurstCapacity,
 		rotatingRatePerSecond,
 		time.Second,
-		rotationRate,
 	)
 	if err != nil {
 		t.Fatalf("Failed to create limiter: %v", err)
@@ -388,14 +355,16 @@ func TestRotatingTokenBucketLimiterLoadLogic(t *testing.T) {
 	}
 
 	// Load with timestamp before rotation should return same pair
-	beforeRotation := now + rotationRate.Nanoseconds() - 1
+	// With burstCapacity=10, refillRate=1.0/sec: rotation = 10/1.0 * 5 = 50 seconds
+	rotationInterval := 50 * time.Second
+	beforeRotation := now + rotationInterval.Nanoseconds() - 1
 	pair3 := limiter.load(beforeRotation)
 	if pair1 != pair3 {
 		t.Error("Before rotation timestamp should return same pair")
 	}
 
 	// Load with timestamp at rotation should trigger rotation
-	atRotation := now + rotationRate.Nanoseconds()
+	atRotation := now + rotationInterval.Nanoseconds()
 	pair4 := limiter.load(atRotation)
 	if pair1 == pair4 {
 		t.Error("At rotation timestamp should return new pair")
@@ -413,13 +382,12 @@ func TestRotatingTokenBucketLimiterLoadLogic(t *testing.T) {
 
 // TestRotatingTokenBucketLimiterConcurrentRotation tests concurrent rotation scenarios
 func TestRotatingTokenBucketLimiterConcurrentRotation(t *testing.T) {
-	rotationRate := 10 * time.Millisecond // Very short rotation for testing
-	limiter, err := NewRotatingTokenBucketRateLimiter(
+	// Use faster refill rate to get shorter calculated rotation intervals for testing
+	limiter, err := NewRotatingTokenBucketLimiter(
 		rotatingNumBuckets,
 		rotatingBurstCapacity,
-		rotatingRatePerSecond,
+		100.0, // Higher refill rate = shorter rotation interval
 		time.Second,
-		rotationRate,
 	)
 	if err != nil {
 		t.Fatalf("Failed to create limiter: %v", err)
@@ -436,7 +404,8 @@ func TestRotatingTokenBucketLimiterConcurrentRotation(t *testing.T) {
 			id := []byte("concurrent-worker-" + string(rune('0'+workerID)))
 
 			// Wait for rotation to be likely
-			tick(rotationRate + 1*time.Millisecond)
+			// With burstCapacity=10, refillRate=100/sec: rotation = 10/100 * 5 = 0.5 seconds
+			tick(500*time.Millisecond + 1*time.Millisecond)
 
 			// Try to trigger rotation concurrently
 			for j := 0; j < 10; j++ {
@@ -448,6 +417,58 @@ func TestRotatingTokenBucketLimiterConcurrentRotation(t *testing.T) {
 
 	wg.Wait()
 	// Test should not panic or deadlock
+}
+
+// TestRotatingTokenBucketLimiterRotationInterval tests the RotationInterval method
+func TestRotatingTokenBucketLimiterRotationInterval(t *testing.T) {
+	tests := []struct {
+		name           string
+		burstCapacity  uint8
+		refillRate     float64
+		refillRateUnit time.Duration
+		expectedInterval time.Duration
+	}{
+		{
+			name:           "fast rotation - 100/sec",
+			burstCapacity:  10,
+			refillRate:     100.0,
+			refillRateUnit: time.Second,
+			expectedInterval: 500 * time.Millisecond, // (10/100)*5 = 0.5s
+		},
+		{
+			name:           "slow rotation - 1/sec",
+			burstCapacity:  10,
+			refillRate:     1.0,
+			refillRateUnit: time.Second,
+			expectedInterval: 50 * time.Second, // (10/1)*5 = 50s
+		},
+		{
+			name:           "medium rotation - 10/sec",
+			burstCapacity:  5,
+			refillRate:     10.0,
+			refillRateUnit: time.Second,
+			expectedInterval: 2500 * time.Millisecond, // (5/10)*5 = 2.5s
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			limiter, err := NewRotatingTokenBucketLimiter(
+				16, // numBuckets
+				tt.burstCapacity,
+				tt.refillRate,
+				tt.refillRateUnit,
+			)
+			if err != nil {
+				t.Fatalf("Failed to create limiter: %v", err)
+			}
+
+			actualInterval := limiter.RotationInterval()
+			if actualInterval != tt.expectedInterval {
+				t.Errorf("Expected rotation interval %v, got %v", tt.expectedInterval, actualInterval)
+			}
+		})
+	}
 }
 
 // TestRotatingTokenBucketLimiterDifferentIDs tests behavior with different IDs
