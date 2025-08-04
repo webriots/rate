@@ -181,7 +181,7 @@ func main() {
 }
 ```
 
-[Go Playground](https://go.dev/play/p/fw3z0BzorV3)
+[Go Playground](https://go.dev/play/p/6UJN8B8F3um)
 
 ## Detailed Usage
 
