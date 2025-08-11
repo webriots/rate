@@ -179,8 +179,8 @@ func (r *RotatingTokenBucketRateLimiter) load(nowNS int64) *rotatingPair {
 	}
 }
 
-// Check returns whether a token would be available for the given ID
-// without actually taking it. This is useful for preemptively
+// CheckToken returns whether a token would be available for the given
+// ID without actually taking it. This is useful for preemptively
 // checking if an operation would be rate limited before attempting
 // it.
 //
@@ -197,11 +197,29 @@ func (r *RotatingTokenBucketRateLimiter) load(nowNS int64) *rotatingPair {
 // Returns true if a token would be available, false otherwise. This
 // method is thread-safe and can be called concurrently from multiple
 // goroutines.
-func (r *RotatingTokenBucketRateLimiter) Check(id []byte) bool {
+func (r *RotatingTokenBucketRateLimiter) CheckToken(id []byte) bool {
+	return r.CheckTokens(id, 1)
+}
+
+// CheckTokens returns whether n tokens would be available for the
+// given ID without actually taking them. This is useful for
+// preemptively checking if an operation would be rate limited before
+// attempting it.
+//
+// The method operates on both the "checked" and "ignored" limiters
+// using the same timestamp to maintain consistency. The "ignored"
+// limiter is checked to keep its state synchronized, but its result
+// is discarded. Only the result from the "checked" limiter determines
+// the return value.
+//
+// Returns true if all n tokens would be available, false otherwise.
+// This method is thread-safe and can be called concurrently from
+// multiple goroutines.
+func (r *RotatingTokenBucketRateLimiter) CheckTokens(id []byte, n uint8) bool {
 	now := nowfn()
 	pair := r.load(now)
-	pair.ignored.checkWithNow(id, now)
-	return pair.checked.checkWithNow(id, now)
+	pair.ignored.checkTokensWithNow(id, n, now)
+	return pair.checked.checkTokensWithNow(id, n, now)
 }
 
 // TakeToken attempts to take a token for the given ID. It returns
@@ -232,10 +250,29 @@ func (r *RotatingTokenBucketRateLimiter) Check(id []byte) bool {
 // This method is thread-safe and can be called concurrently from
 // multiple goroutines.
 func (r *RotatingTokenBucketRateLimiter) TakeToken(id []byte) bool {
+	return r.TakeTokens(id, 1)
+}
+
+// TakeTokens attempts to take n tokens for the given ID. It returns
+// true if all n tokens were successfully taken, false if the
+// operation should be rate limited.
+//
+// The method operates on both the "checked" and "ignored" limiters
+// using the same timestamp to maintain consistency. Both limiters
+// consume tokens to keep their state synchronized, but only the
+// result from the "checked" limiter determines the return value.
+//
+// This design intentionally consumes 2x tokens per call to provide
+// collision resistance. The operation is atomic: either all n tokens
+// are taken from both limiters, or none are taken.
+//
+// This method is thread-safe and can be called concurrently from
+// multiple goroutines.
+func (r *RotatingTokenBucketRateLimiter) TakeTokens(id []byte, n uint8) bool {
 	now := nowfn()
 	pair := r.load(now)
-	pair.ignored.takeTokenWithNow(id, now)
-	return pair.checked.takeTokenWithNow(id, now)
+	pair.ignored.takeTokensWithNow(id, n, now)
+	return pair.checked.takeTokensWithNow(id, n, now)
 }
 
 // RotationInterval returns the automatically calculated rotation

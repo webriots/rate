@@ -116,7 +116,7 @@ func TestRotatingTokenBucketLimiterBasicFunctionality(t *testing.T) {
 	}
 
 	// Check should also return false
-	if limiter.Check(id) {
+	if limiter.CheckToken(id) {
 		t.Error("Check should return false after burst")
 	}
 
@@ -234,8 +234,8 @@ func TestRotatingTokenBucketLimiterCollisionAvoidance(t *testing.T) {
 
 	// At least one of them should be able to take tokens now
 	// (assuming new seed resolves collision)
-	canTake1 := limiter.Check(id1)
-	canTake2 := limiter.Check(id2)
+	canTake1 := limiter.CheckToken(id1)
+	canTake2 := limiter.CheckToken(id2)
 
 	if !canTake1 && !canTake2 {
 		t.Error("After rotation, at least one ID should be able to take tokens")
@@ -274,7 +274,7 @@ func TestRotatingTokenBucketLimiterSteadyStateConvergence(t *testing.T) {
 	tick(1 * time.Second) // 10 tokens should refill, capped at burst capacity of 5
 
 	// Should have tokens available due to refill (not rotation)
-	if !limiter.Check(id) {
+	if !limiter.CheckToken(id) {
 		t.Error("Tokens should have refilled after 1 second")
 	}
 
@@ -284,7 +284,7 @@ func TestRotatingTokenBucketLimiterSteadyStateConvergence(t *testing.T) {
 
 	// After rotation and steady state convergence, limiter should work normally
 	// Both checked and ignored buckets should have similar token levels
-	if !limiter.Check(id) {
+	if !limiter.CheckToken(id) {
 		t.Error("Should have tokens available after steady state rotation")
 	}
 }
@@ -313,7 +313,7 @@ func TestRotatingTokenBucketLimiterConcurrency(t *testing.T) {
 					atomic.AddInt64(&successCount, 1)
 				}
 				// Also test Check method
-				limiter.Check(id)
+				limiter.CheckToken(id)
 			}
 		}(i)
 	}
@@ -410,7 +410,7 @@ func TestRotatingTokenBucketLimiterConcurrentRotation(t *testing.T) {
 			// Try to trigger rotation concurrently
 			for j := 0; j < 10; j++ {
 				limiter.TakeToken(id)
-				limiter.Check(id)
+				limiter.CheckToken(id)
 			}
 		}(i)
 	}
@@ -567,7 +567,7 @@ func BenchmarkRotatingTokenBucketLimiterCheck(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		limiter.Check(id)
+		limiter.CheckToken(id)
 	}
 }
 

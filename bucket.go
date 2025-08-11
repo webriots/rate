@@ -10,8 +10,10 @@ import (
 )
 
 type Limiter interface {
-	Check([]byte) bool
+	CheckToken([]byte) bool
+	CheckTokens([]byte, uint8) bool
 	TakeToken([]byte) bool
+	TakeTokens([]byte, uint8) bool
 }
 
 // TokenBucketLimiter implements the token bucket algorithm for rate
@@ -87,16 +89,25 @@ func NewTokenBucketLimiter(
 	}, nil
 }
 
-// Check returns whether a token would be available for the given ID
-// without actually taking it. This is useful for preemptively
+// CheckToken returns whether a token would be available for the given
+// ID without actually taking it. This is useful for preemptively
 // checking if an operation would be rate limited before attempting
 // it. Returns true if a token would be available, false otherwise.
-func (t *TokenBucketLimiter) Check(id []byte) bool {
-	return t.checkWithNow(id, nowfn())
+func (t *TokenBucketLimiter) CheckToken(id []byte) bool {
+	return t.CheckTokens(id, 1)
 }
 
-func (t *TokenBucketLimiter) checkWithNow(id []byte, now int64) bool {
-	return t.checkInner(t.index(id), t.nanosPerToken, now)
+// CheckTokens returns whether n tokens would be available for the
+// given ID without actually taking them. This is useful for
+// preemptively checking if an operation would be rate limited before
+// attempting it. Returns true if all n tokens would be available,
+// false otherwise.
+func (t *TokenBucketLimiter) CheckTokens(id []byte, n uint8) bool {
+	return t.checkTokensWithNow(id, n, nowfn())
+}
+
+func (t *TokenBucketLimiter) checkTokensWithNow(id []byte, n uint8, now int64) bool {
+	return t.checkInner(t.index(id), t.nanosPerToken, now, n)
 }
 
 // TakeToken attempts to take a token for the given ID. It returns
@@ -104,34 +115,44 @@ func (t *TokenBucketLimiter) checkWithNow(id []byte, now int64) bool {
 // should be rate limited. This method is thread-safe and can be
 // called concurrently from multiple goroutines.
 func (t *TokenBucketLimiter) TakeToken(id []byte) bool {
-	return t.takeTokenWithNow(id, nowfn())
+	return t.TakeTokens(id, 1)
 }
 
-func (t *TokenBucketLimiter) takeTokenWithNow(id []byte, now int64) bool {
-	return t.takeTokenInner(t.index(id), t.nanosPerToken, now)
+// TakeTokens attempts to take n tokens for the given ID. It returns
+// true if all n tokens were successfully taken, false if the
+// operation should be rate limited. This method is thread-safe and
+// can be called concurrently from multiple goroutines. The operation
+// is atomic: either all n tokens are taken, or none are taken.
+func (t *TokenBucketLimiter) TakeTokens(id []byte, n uint8) bool {
+	return t.takeTokensWithNow(id, n, nowfn())
 }
 
-// checkInner is an internal method that checks if a token is
+func (t *TokenBucketLimiter) takeTokensWithNow(id []byte, n uint8, now int64) bool {
+	return t.takeTokenInner(t.index(id), t.nanosPerToken, now, n)
+}
+
+// checkInner is an internal method that checks if n tokens are
 // available in the bucket at the specified index using the given
-// refill rate. This is used by Check and is also used by other
-// limiters that wrap this one.
-func (t *TokenBucketLimiter) checkInner(index int, rate int64, now int64) bool {
+// refill rate. This is used by CheckToken/CheckTokens and is also
+// used by other limiters that wrap this one.
+func (t *TokenBucketLimiter) checkInner(index int, rate int64, now int64, n uint8) bool {
 	existing := t.buckets.Get(index)
 	unpacked := unpack(existing)
 	refilled := unpacked.refill(now, rate, t.burstCapacity)
-	return refilled.level > 0
+	return refilled.level >= n
 }
 
-// takeTokenInner is an internal method that attempts to take a token
+// takeTokenInner is an internal method that attempts to take n tokens
 // from the bucket at the specified index using the given refill rate.
-// This is used by TakeToken and is also used by other limiters that
-// wrap this one. It uses atomic operations to ensure thread safety.
-func (t *TokenBucketLimiter) takeTokenInner(index int, rate int64, now int64) bool {
+// This is used by TakeToken/TakeTokens and is also used by other
+// limiters that wrap this one. It uses atomic operations to ensure
+// thread safety.
+func (t *TokenBucketLimiter) takeTokenInner(index int, rate int64, now int64, n uint8) bool {
 	for {
 		existing := t.buckets.Get(index)
 		unpacked := unpack(existing)
 		refilled := unpacked.refill(now, rate, t.burstCapacity)
-		consumed, ok := refilled.take()
+		consumed, ok := refilled.take(n)
 
 		if consumed != unpacked && !t.buckets.CompareAndSwap(
 			index,
@@ -198,13 +219,14 @@ func (b tokenBucket) refill(nowNS, rate int64, maxLevel uint8) tokenBucket {
 	return b
 }
 
-// take attempts to take a token from the bucket. Returns the updated
-// bucket and a boolean indicating whether a token was taken. If no
-// tokens are available, the bucket remains unchanged and false is
-// returned.
-func (b tokenBucket) take() (tokenBucket, bool) {
-	if b.level > 0 {
-		b.level--
+// take attempts to take n tokens from the bucket. Returns the updated
+// bucket and a boolean indicating whether all n tokens were taken. If
+// insufficient tokens are available, the bucket remains unchanged and
+// false is returned. The operation is atomic: either all n tokens are
+// taken, or none are taken.
+func (b tokenBucket) take(n uint8) (tokenBucket, bool) {
+	if b.level >= n {
+		b.level -= n
 		return b, true
 	} else {
 		return b, false

@@ -247,7 +247,7 @@ func TestTokenBucketNoTokenRefill(t *testing.T) {
 
 func TestTokenBucketEmptyNoChange(t *testing.T) {
 	bucket := newTokenBucket(0, 0)
-	taken, changed := bucket.take()
+	taken, changed := bucket.take(1)
 
 	if bucket != taken {
 		t.Errorf("take(): got %v, want %v", taken, bucket)
@@ -259,7 +259,7 @@ func TestTokenBucketEmptyNoChange(t *testing.T) {
 }
 
 func TestTokenBucketNonEmptyDecrement(t *testing.T) {
-	taken, changed := newTokenBucket(10, 0).take()
+	taken, changed := newTokenBucket(10, 0).take(1)
 
 	expect := tokenBucket{
 		level: 9,
@@ -411,7 +411,7 @@ func BenchmarkTokenBucketCheck(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		limiter.Check(id)
+		limiter.CheckToken(id)
 	}
 }
 
@@ -425,13 +425,13 @@ func TestTokenBucketCheck(t *testing.T) {
 	id := []byte("check-test")
 
 	// Check should return true initially when tokens are available
-	if !limiter.Check(id) {
+	if !limiter.CheckToken(id) {
 		t.Error("Check should return true when tokens are available")
 	}
 
 	// Multiple checks should not consume tokens
 	for range 5 {
-		if !limiter.Check(id) {
+		if !limiter.CheckToken(id) {
 			t.Error("Repeated checks should not consume tokens")
 		}
 	}
@@ -444,12 +444,12 @@ func TestTokenBucketCheck(t *testing.T) {
 	}
 
 	// After taking all tokens, check should return false
-	if limiter.Check(id) {
+	if limiter.CheckToken(id) {
 		t.Error("Check should return false when no tokens available")
 	}
 
 	// Check should continue to return false and not affect state
-	if limiter.Check(id) {
+	if limiter.CheckToken(id) {
 		t.Error("Check should consistently return false when no tokens")
 	}
 
@@ -457,7 +457,7 @@ func TestTokenBucketCheck(t *testing.T) {
 	tick(time.Second * 2)
 
 	// Now check should return true again
-	if !limiter.Check(id) {
+	if !limiter.CheckToken(id) {
 		t.Error("Check should return true after refill")
 	}
 }
@@ -479,15 +479,15 @@ func TestTokenBucketCheckInner(t *testing.T) {
 
 	// Initially all should return true
 	now := nowfn()
-	if !limiter.checkInner(index, fastRate, now) {
+	if !limiter.checkInner(index, fastRate, now, 1) {
 		t.Error("Fast rate check should be true initially")
 	}
 
-	if !limiter.checkInner(index, normalRate, now) {
+	if !limiter.checkInner(index, normalRate, now, 1) {
 		t.Error("Normal rate check should be true initially")
 	}
 
-	if !limiter.checkInner(index, slowRate, now) {
+	if !limiter.checkInner(index, slowRate, now, 1) {
 		t.Error("Slow rate check should be true initially")
 	}
 
@@ -504,15 +504,15 @@ func TestTokenBucketCheckInner(t *testing.T) {
 
 	// All rates should return false immediately after exhaustion
 	now = nowfn()
-	if limiter.checkInner(index, fastRate, now) {
+	if limiter.checkInner(index, fastRate, now, 1) {
 		t.Error("Fast rate check should be false after exhaustion")
 	}
 
-	if limiter.checkInner(index, normalRate, now) {
+	if limiter.checkInner(index, normalRate, now, 1) {
 		t.Error("Normal rate check should be false after exhaustion")
 	}
 
-	if limiter.checkInner(index, slowRate, now) {
+	if limiter.checkInner(index, slowRate, now, 1) {
 		t.Error("Slow rate check should be false after exhaustion")
 	}
 
@@ -521,17 +521,228 @@ func TestTokenBucketCheckInner(t *testing.T) {
 
 	// Test different rate refill states without capturing results
 	now = nowfn()
-	_ = limiter.checkInner(index, fastRate, now)
-	_ = limiter.checkInner(index, normalRate, now)
-	_ = limiter.checkInner(index, slowRate, now)
+	_ = limiter.checkInner(index, fastRate, now, 1)
+	_ = limiter.checkInner(index, normalRate, now, 1)
+	_ = limiter.checkInner(index, slowRate, now, 1)
 
 	// After full refill time for normal rate
 	tick(time.Second)
 
 	// Normal rate should definitely have refilled
 	now = nowfn()
-	if !limiter.checkInner(index, normalRate, now) {
+	if !limiter.checkInner(index, normalRate, now, 1) {
 		t.Error("Normal rate should refill after 1 second")
+	}
+}
+
+// TestCheckTokens tests the CheckTokens method with various n values
+func TestCheckTokens(t *testing.T) {
+	limiter, err := NewTokenBucketLimiter(16, 10, 1.0, time.Second)
+	if err != nil {
+		t.Fatalf("Failed to create limiter: %v", err)
+	}
+	id := []byte("test-id")
+
+	// Test checking 0 tokens (should always succeed)
+	if !limiter.CheckTokens(id, 0) {
+		t.Error("CheckTokens(0) should always succeed")
+	}
+
+	// Test checking 1 token (same as CheckToken)
+	if !limiter.CheckTokens(id, 1) {
+		t.Error("CheckTokens(1) should succeed when tokens available")
+	}
+
+	// Test checking multiple tokens at once
+	if !limiter.CheckTokens(id, 5) {
+		t.Error("CheckTokens(5) should succeed when tokens available")
+	}
+
+	// Test checking all tokens
+	if !limiter.CheckTokens(id, 10) {
+		t.Error("CheckTokens(10) should succeed for full capacity")
+	}
+
+	// Test checking more than capacity
+	if limiter.CheckTokens(id, 11) {
+		t.Error("CheckTokens(11) should fail when requesting more than burst capacity")
+	}
+
+	// Take all tokens
+	if !limiter.TakeTokens(id, 10) {
+		t.Error("TakeTokens(10) should succeed")
+	}
+
+	// Now checking should fail
+	if limiter.CheckTokens(id, 1) {
+		t.Error("CheckTokens(1) should fail when no tokens available")
+	}
+
+	// Wait for partial refill
+	tick(2 * time.Second)
+
+	// Should have 2 tokens now
+	if !limiter.CheckTokens(id, 2) {
+		t.Error("CheckTokens(2) should succeed after 2 second refill")
+	}
+
+	// But checking for 3 should fail
+	if limiter.CheckTokens(id, 3) {
+		t.Error("CheckTokens(3) should fail when only 2 tokens available")
+	}
+}
+
+// TestTakeTokens tests the TakeTokens method with various n values
+func TestTakeTokens(t *testing.T) {
+	limiter, err := NewTokenBucketLimiter(16, 10, 1.0, time.Second)
+	if err != nil {
+		t.Fatalf("Failed to create limiter: %v", err)
+	}
+	id := []byte("test-id")
+
+	// Test taking 0 tokens (should always succeed)
+	if !limiter.TakeTokens(id, 0) {
+		t.Error("TakeTokens(0) should always succeed")
+	}
+
+	// Test taking 1 token (same as TakeToken)
+	if !limiter.TakeTokens(id, 1) {
+		t.Error("TakeTokens(1) should succeed when tokens available")
+	}
+
+	// Test taking multiple tokens at once
+	if !limiter.TakeTokens(id, 3) {
+		t.Error("TakeTokens(3) should succeed when tokens available")
+	}
+
+	// Test taking remaining tokens (started with 10, took 1+3=4, should have 6 left)
+	if !limiter.TakeTokens(id, 6) {
+		t.Error("TakeTokens(6) should succeed for remaining tokens")
+	}
+
+	// Test taking more tokens than available (all 10 consumed)
+	if limiter.TakeTokens(id, 1) {
+		t.Error("TakeTokens(1) should fail when no tokens available")
+	}
+
+	// Test taking many tokens at once when none available
+	if limiter.TakeTokens(id, 5) {
+		t.Error("TakeTokens(5) should fail when no tokens available")
+	}
+
+	// Wait for partial refill (2 tokens)
+	tick(2 * time.Second)
+
+	// Should have 2 tokens now
+	if !limiter.TakeTokens(id, 2) {
+		t.Error("TakeTokens(2) should succeed after 2 second refill")
+	}
+
+	// Wait for full refill
+	tick(10 * time.Second)
+
+	// Test taking more tokens than capacity
+	if limiter.TakeTokens(id, 11) {
+		t.Error("TakeTokens(11) should fail when requesting more than burst capacity")
+	}
+
+	// Test taking exactly burst capacity
+	if !limiter.TakeTokens(id, 10) {
+		t.Error("TakeTokens(10) should succeed when full capacity available")
+	}
+}
+
+// TestTakeTokensAtomicity tests that TakeTokens is atomic (all or nothing)
+func TestTakeTokensAtomicity(t *testing.T) {
+	limiter, err := NewTokenBucketLimiter(16, 5, 1.0, time.Second)
+	if err != nil {
+		t.Fatalf("Failed to create limiter: %v", err)
+	}
+	id := []byte("test-id")
+
+	// Take 3 tokens, leaving 2
+	if !limiter.TakeTokens(id, 3) {
+		t.Error("TakeTokens(3) should succeed")
+	}
+
+	// Try to take 3 more (should fail, only 2 available)
+	if limiter.TakeTokens(id, 3) {
+		t.Error("TakeTokens(3) should fail when only 2 tokens available")
+	}
+
+	// Verify that the 2 tokens are still available (atomic failure)
+	if !limiter.TakeTokens(id, 2) {
+		t.Error("TakeTokens(2) should succeed, proving atomicity")
+	}
+}
+
+// TestTakeTokensConcurrency tests concurrent access to TakeTokens
+func TestTakeTokensConcurrency(t *testing.T) {
+	limiter, err := NewTokenBucketLimiter(16, 100, 10.0, time.Second)
+	if err != nil {
+		t.Fatalf("Failed to create limiter: %v", err)
+	}
+	id := []byte("test-id")
+
+	var wg sync.WaitGroup
+	successCount := atomic.Int32{}
+	attempts := 50
+	tokensPerAttempt := uint8(2)
+
+	wg.Add(attempts)
+	for i := 0; i < attempts; i++ {
+		go func() {
+			defer wg.Done()
+			if limiter.TakeTokens(id, tokensPerAttempt) {
+				successCount.Add(1)
+			}
+		}()
+	}
+
+	wg.Wait()
+
+	// Should have exactly 50 successes (100 tokens / 2 tokens per attempt)
+	if successCount.Load() != 50 {
+		t.Errorf("Expected 50 successful takes, got %d", successCount.Load())
+	}
+}
+
+// TestTakeTokensMultipleIDs tests TakeTokens with multiple IDs
+func TestTakeTokensMultipleIDs(t *testing.T) {
+	limiter, err := NewTokenBucketLimiter(16, 5, 1.0, time.Second)
+	if err != nil {
+		t.Fatalf("Failed to create limiter: %v", err)
+	}
+
+	id1 := []byte("id1")
+	id2 := []byte("id2")
+
+	// Each ID should have its own bucket
+	if !limiter.TakeTokens(id1, 3) {
+		t.Error("TakeTokens(3) should succeed for id1")
+	}
+
+	if !limiter.TakeTokens(id2, 4) {
+		t.Error("TakeTokens(4) should succeed for id2")
+	}
+
+	// id1 should have 2 tokens left
+	if !limiter.TakeTokens(id1, 2) {
+		t.Error("TakeTokens(2) should succeed for id1")
+	}
+
+	// id2 should have 1 token left
+	if !limiter.TakeTokens(id2, 1) {
+		t.Error("TakeTokens(1) should succeed for id2")
+	}
+
+	// Both should be exhausted now
+	if limiter.TakeTokens(id1, 1) {
+		t.Error("TakeTokens(1) should fail for exhausted id1")
+	}
+
+	if limiter.TakeTokens(id2, 1) {
+		t.Error("TakeTokens(1) should fail for exhausted id2")
 	}
 }
 
@@ -546,6 +757,31 @@ func BenchmarkTokenBucketTakeToken(b *testing.B) {
 		if i%100 == 0 {
 			tick(time.Millisecond)
 		}
+	}
+}
+
+func BenchmarkTokenBucketTakeTokens(b *testing.B) {
+	limiter, _ := DefaultLimiter()
+	id := []byte("benchmark-id")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		limiter.TakeTokens(id, uint8(i%5+1)) // Take 1-5 tokens
+		if i%100 == 0 {
+			tick(time.Millisecond)
+		}
+	}
+}
+
+func BenchmarkTokenBucketCheckTokens(b *testing.B) {
+	limiter, _ := DefaultLimiter()
+	id := []byte("benchmark-id")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		limiter.CheckTokens(id, uint8(i%5+1)) // Check 1-5 tokens
 	}
 }
 
@@ -599,7 +835,7 @@ func BenchmarkTokenBucketTake(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		bucket, _ = bucket.take()
+		bucket, _ = bucket.take(1)
 		if i%int(burstCapacity) == 0 {
 			// Reset bucket level periodically to avoid running out of tokens
 			bucket = newTokenBucket(burstCapacity, bucket.stamp)

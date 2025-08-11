@@ -45,7 +45,8 @@ import (
 
 func main() {
 	// Create a new token bucket limiter:
-	// - 1024 buckets (automatically rounded to nearest power of 2 if not already a power of 2)
+	// - 1024 buckets (automatically rounded to nearest power of 2 if
+	//   not already a power of 2)
 	// - 10 tokens burst capacity
 	// - 100 tokens per second refill rate
 	limiter, err := rate.NewTokenBucketLimiter(1024, 10, 100, time.Second)
@@ -65,8 +66,18 @@ func main() {
 	}
 
 	// Check without consuming
-	if limiter.Check(id) {
+	if limiter.CheckToken(id) {
 		fmt.Println("Token would be available")
+	}
+
+	// Take multiple tokens at once
+	if limiter.TakeTokens(id, 5) {
+		fmt.Println("Successfully took 5 tokens")
+	}
+
+	// Check if multiple tokens would be available
+	if limiter.CheckTokens(id, 3) {
+		fmt.Println("3 tokens would be available")
 	}
 }
 ```
@@ -87,10 +98,13 @@ import (
 
 func main() {
 	// Create an AIMD token bucket limiter:
-	// - 1024 buckets (automatically rounded to nearest power of 2 if not already a power of 2)
+	// - 1024 buckets (automatically rounded to nearest power of 2 if
+	//   not already a power of 2)
 	// - 10 tokens burst capacity
-	// - Min rate: 1 token/s, Max rate: 100 tokens/s, Initial rate: 10 tokens/s
-	// - Increase by 1 token/s on success, decrease by factor of 2 on failure
+	// - Min rate: 1 token/s, Max rate: 100 tokens/s, Initial rate: 10
+	//   tokens/s
+	// - Increase by 1 token/s on success, decrease by factor of 2 on
+	//   failure
 	limiter, err := rate.NewAIMDTokenBucketLimiter(
 		1024,  // numBuckets
 		10,    // burstCapacity
@@ -116,8 +130,8 @@ func main() {
 			// If successful, increase the rate
 			limiter.IncreaseRate(id)
 		} else {
-			// If failed (e.g., downstream service is overloaded),
-			// decrease the rate to back off
+			// If failed (e.g., downstream service is overloaded), decrease
+			// the rate to back off
 			limiter.DecreaseRate(id)
 		}
 	} else {
@@ -149,10 +163,12 @@ import (
 
 func main() {
 	// Create a rotating token bucket limiter:
-	// - 1024 buckets (automatically rounded to nearest power of 2 if not already a power of 2)
+	// - 1024 buckets (automatically rounded to nearest power of 2 if
+	//   not already a power of 2)
 	// - 10 tokens burst capacity
 	// - 100 tokens per second refill rate
-	// - Rotation interval automatically calculated: (10/100)*5 = 0.5 seconds
+	// - Rotation interval automatically calculated: (10/100)*5 = 0.5
+	//   seconds
 	limiter, err := rate.NewRotatingTokenBucketLimiter(
 		1024,        // numBuckets
 		10,          // burstCapacity
@@ -175,8 +191,13 @@ func main() {
 	}
 
 	// Check without consuming
-	if limiter.Check(id) {
+	if limiter.CheckToken(id) {
 		fmt.Println("Token would be available")
+	}
+
+	// The rotating limiter also supports multi-token operations
+	if limiter.TakeTokens(id, 3) {
+		fmt.Println("Successfully took 3 tokens")
 	}
 }
 ```
@@ -184,6 +205,38 @@ func main() {
 [Go Playground](https://go.dev/play/p/6UJN8B8F3um)
 
 ## Detailed Usage
+
+### Common Interface
+
+All rate limiters in this package implement the `Limiter` interface:
+
+```go
+type Limiter interface {
+	CheckToken([]byte) bool         // Check if a single token is available
+	CheckTokens([]byte, uint8) bool // Check if n tokens are available
+	TakeToken([]byte) bool          // Take a single token
+	TakeTokens([]byte, uint8) bool  // Take n tokens atomically
+}
+```
+
+This allows you to write code that works with any rate limiter implementation:
+
+```go
+func processRequest(limiter rate.Limiter, clientID []byte, tokensNeeded uint8) error {
+	// Check if we have enough tokens without consuming them
+	if !limiter.CheckTokens(clientID, tokensNeeded) {
+		return fmt.Errorf("rate limited: need %d tokens", tokensNeeded)
+	}
+
+	// Actually take the tokens
+	if !limiter.TakeTokens(clientID, tokensNeeded) {
+		return fmt.Errorf("rate limited: tokens no longer available")
+	}
+
+	// Process the request...
+	return nil
+}
+```
 
 ### TokenBucketLimiter
 
@@ -212,6 +265,19 @@ The constructor performs validation on all parameters and returns descriptive er
 - `refillRate` must be a positive, finite number (not NaN, infinity, zero, or negative)
 - `refillRateUnit` must represent a positive duration
 - The product of `refillRate` and `refillRateUnit` must not overflow when converted to nanoseconds
+
+#### Methods:
+
+- `CheckToken(id []byte) bool`: Checks if a token would be available without consuming it
+- `CheckTokens(id []byte, n uint8) bool`: Checks if n tokens would be available without consuming them
+- `TakeToken(id []byte) bool`: Attempts to take a single token, returns true if successful
+- `TakeTokens(id []byte, n uint8) bool`: Attempts to take n tokens atomically, returns true if all n tokens were taken
+
+**Multi-token operations:**
+The `TakeTokens` and `CheckTokens` methods support atomic multi-token operations. When requesting multiple tokens:
+- The operation is all-or-nothing: either all requested tokens are taken/available, or none are
+- The maximum number of tokens that can be requested is limited by the burst capacity
+- These methods are useful for operations that require multiple "units" of rate limiting
 
 #### Token Bucket Algorithm Explained
 
@@ -304,6 +370,15 @@ The constructor performs comprehensive validation on all parameters and returns 
 - `rateAdditiveIncrease` must be a positive, finite number
 - `rateMultiplicativeDecrease` must be a finite number greater than or equal to 1.0
 - The product of `rateInit`, `rateMin`, `rateMax`, or `rateAdditiveIncrease` with `rateUnit` must not overflow when converted to nanoseconds
+
+#### Methods:
+
+- `CheckToken(id []byte) bool`: Checks if a token would be available without consuming it
+- `CheckTokens(id []byte, n uint8) bool`: Checks if n tokens would be available without consuming them
+- `TakeToken(id []byte) bool`: Attempts to take a single token, returns true if successful
+- `TakeTokens(id []byte, n uint8) bool`: Attempts to take n tokens atomically, returns true if all n tokens were taken
+- `IncreaseRate(id []byte)`: Additively increases the rate for the given ID (on success)
+- `DecreaseRate(id []byte)`: Multiplicatively decreases the rate for the given ID (on failure)
 
 #### AIMD Algorithm Explained
 
@@ -404,6 +479,14 @@ The constructor performs validation on all parameters and returns descriptive er
 - `refillRate` must be a positive, finite number (not NaN, infinity, zero, or negative)
 - `refillRateUnit` must represent a positive duration
 - The product of `refillRate` and `refillRateUnit` must not overflow when converted to nanoseconds
+
+#### Methods:
+
+- `CheckToken(id []byte) bool`: Checks if a token would be available without consuming it
+- `CheckTokens(id []byte, n uint8) bool`: Checks if n tokens would be available without consuming them
+- `TakeToken(id []byte) bool`: Attempts to take a single token, returns true if successful
+- `TakeTokens(id []byte, n uint8) bool`: Attempts to take n tokens atomically, returns true if all n tokens were taken
+- `RotationInterval() time.Duration`: Returns the automatically calculated rotation interval
 
 #### Collision-Resistant Algorithm Explained
 
