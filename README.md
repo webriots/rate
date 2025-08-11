@@ -82,7 +82,7 @@ func main() {
 }
 ```
 
-[Go Playground](https://go.dev/play/p/UMxQDHfqKqD)
+[Go Playground](https://go.dev/play/p/oDQlxRe75g_H)
 
 ### AIMD Rate Limiter
 
@@ -147,7 +147,7 @@ func processRequest() bool {
 }
 ```
 
-[Go Playground](https://go.dev/play/p/2AEPxptA2xd)
+[Go Playground](https://go.dev/play/p/UDslvGAPG-O)
 
 ### Rotating Token Bucket Rate Limiter
 
@@ -202,7 +202,7 @@ func main() {
 }
 ```
 
-[Go Playground](https://go.dev/play/p/6UJN8B8F3um)
+[Go Playground](https://go.dev/play/p/nTlCGSHtQ7j)
 
 ## Detailed Usage
 
