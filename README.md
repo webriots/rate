@@ -548,7 +548,6 @@ Hash Collision Scenario:
 **Trade-offs:**
 - ❌ **Higher Resource Usage**: 2x token consumption and memory usage
 - ❌ **Slight Performance Overhead**: ~2x slower than single TokenBucketLimiter
-- ❌ **Configuration Complexity**: Additional `rotationRate` parameter to tune
 
 #### Implementation Details:
 
