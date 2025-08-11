@@ -18,7 +18,7 @@ A high-performance rate limiter library for Go applications with multiple rate l
 - **Multiple Rate Limiting Strategies**:
   - TokenBucketLimiter: Classic token bucket algorithm with multiple buckets
   - AIMDTokenBucketLimiter: Additive-Increase/Multiplicative-Decrease algorithm inspired by TCP congestion control
-  - RotatingTokenBucketRateLimiter: Collision-resistant rate limiter with periodic hash seed rotation
+  - RotatingTokenBucketLimiter: Collision-resistant rate limiter with periodic hash seed rotation
 - **Highly Scalable**: Designed for high-throughput concurrent systems
   - Multiple buckets distribute load across different request IDs
   - Low contention design for concurrent access patterns
@@ -440,7 +440,7 @@ rateMin ────────────────────────
 - Rate changes are applied atomically using lock-free operations
 - Rate information is stored alongside token information in the bucket
 
-### RotatingTokenBucketRateLimiter
+### RotatingTokenBucketLimiter
 
 The Rotating Token Bucket Rate Limiter addresses a fundamental limitation of hash-based rate limiters: hash collisions between different IDs can cause unfair rate limiting. This limiter maintains two TokenBucketLimiters with different hash seeds and automatically rotates between them to minimize collision impact while ensuring correctness.
 

@@ -20,11 +20,11 @@ type rotatingPair struct {
 	rotated time56.Time
 }
 
-// RotatingTokenBucketRateLimiter implements a collision-resistant
-// token bucket rate limiter. It maintains two TokenBucketLimiters
-// with different hash seeds and rotates between them periodically.
-// This approach minimizes the impact of hash collisions on rate
-// limiting accuracy.
+// RotatingTokenBucketLimiter implements a collision-resistant token
+// bucket rate limiter. It maintains two TokenBucketLimiters with
+// different hash seeds and rotates between them periodically. This
+// approach minimizes the impact of hash collisions on rate limiting
+// accuracy.
 //
 // The limiter works by:
 //  1. Maintaining two TokenBucketLimiters with different hash seeds
@@ -39,10 +39,13 @@ type rotatingPair struct {
 // This design ensures that hash collisions between different IDs only
 // last for the duration of the rotation period, providing better
 // fairness and accuracy compared to a single TokenBucketLimiter.
-type RotatingTokenBucketRateLimiter struct {
+type RotatingTokenBucketLimiter struct {
 	pair             atomic.Pointer[rotatingPair] // Current limiter pair
 	nanosPerRotation int64                        // Rotation interval in nanoseconds
 }
+
+// Compile-time assertion that RotatingTokenBucketLimiter implements Limiter
+var _ Limiter = (*RotatingTokenBucketLimiter)(nil)
 
 // NewRotatingTokenBucketLimiter creates a new collision-resistant
 // token bucket rate limiter with the specified parameters:
@@ -86,14 +89,14 @@ type RotatingTokenBucketRateLimiter struct {
 //
 // Input validation follows the same rules as NewTokenBucketLimiter.
 //
-// Returns a new RotatingTokenBucketRateLimiter instance and any error
+// Returns a new RotatingTokenBucketLimiter instance and any error
 // that occurred during creation.
 func NewRotatingTokenBucketLimiter(
 	numBuckets uint,
 	burstCapacity uint8,
 	refillRate float64,
 	refillRateUnit time.Duration,
-) (*RotatingTokenBucketRateLimiter, error) {
+) (*RotatingTokenBucketLimiter, error) {
 	checked, err := NewTokenBucketLimiter(
 		numBuckets,
 		burstCapacity,
@@ -122,7 +125,7 @@ func NewRotatingTokenBucketLimiter(
 	safetyFactor := 5.0
 	rotationRate := time.Duration(float64(refillTime) * safetyFactor)
 
-	limiter := &RotatingTokenBucketRateLimiter{
+	limiter := &RotatingTokenBucketLimiter{
 		nanosPerRotation: rotationRate.Nanoseconds(),
 	}
 
@@ -154,7 +157,7 @@ func NewRotatingTokenBucketLimiter(
 // This approach ensures that hash collisions are resolved
 // periodically without affecting the thread-safety or performance of
 // the limiter.
-func (r *RotatingTokenBucketRateLimiter) load(nowNS int64) *rotatingPair {
+func (r *RotatingTokenBucketLimiter) load(nowNS int64) *rotatingPair {
 	now := time56.Unix(nowNS)
 
 	for {
@@ -197,7 +200,7 @@ func (r *RotatingTokenBucketRateLimiter) load(nowNS int64) *rotatingPair {
 // Returns true if a token would be available, false otherwise. This
 // method is thread-safe and can be called concurrently from multiple
 // goroutines.
-func (r *RotatingTokenBucketRateLimiter) CheckToken(id []byte) bool {
+func (r *RotatingTokenBucketLimiter) CheckToken(id []byte) bool {
 	return r.CheckTokens(id, 1)
 }
 
@@ -215,7 +218,7 @@ func (r *RotatingTokenBucketRateLimiter) CheckToken(id []byte) bool {
 // Returns true if all n tokens would be available, false otherwise.
 // This method is thread-safe and can be called concurrently from
 // multiple goroutines.
-func (r *RotatingTokenBucketRateLimiter) CheckTokens(id []byte, n uint8) bool {
+func (r *RotatingTokenBucketLimiter) CheckTokens(id []byte, n uint8) bool {
 	now := nowfn()
 	pair := r.load(now)
 	pair.ignored.checkTokensWithNow(id, n, now)
@@ -249,7 +252,7 @@ func (r *RotatingTokenBucketRateLimiter) CheckTokens(id []byte, n uint8) bool {
 //
 // This method is thread-safe and can be called concurrently from
 // multiple goroutines.
-func (r *RotatingTokenBucketRateLimiter) TakeToken(id []byte) bool {
+func (r *RotatingTokenBucketLimiter) TakeToken(id []byte) bool {
 	return r.TakeTokens(id, 1)
 }
 
@@ -268,7 +271,7 @@ func (r *RotatingTokenBucketRateLimiter) TakeToken(id []byte) bool {
 //
 // This method is thread-safe and can be called concurrently from
 // multiple goroutines.
-func (r *RotatingTokenBucketRateLimiter) TakeTokens(id []byte, n uint8) bool {
+func (r *RotatingTokenBucketLimiter) TakeTokens(id []byte, n uint8) bool {
 	now := nowfn()
 	pair := r.load(now)
 	pair.ignored.takeTokensWithNow(id, n, now)
@@ -286,6 +289,6 @@ func (r *RotatingTokenBucketRateLimiter) TakeTokens(id []byte, n uint8) bool {
 //
 // This method is thread-safe and can be called concurrently from
 // multiple goroutines.
-func (r *RotatingTokenBucketRateLimiter) RotationInterval() time.Duration {
+func (r *RotatingTokenBucketLimiter) RotationInterval() time.Duration {
 	return time.Duration(r.nanosPerRotation)
 }

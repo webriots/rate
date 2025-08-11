@@ -16,7 +16,7 @@ const (
 	rotatingRotationRate  = 100 * time.Millisecond
 )
 
-func DefaultRotatingLimiter() (*RotatingTokenBucketRateLimiter, error) {
+func DefaultRotatingLimiter() (*RotatingTokenBucketLimiter, error) {
 	return NewRotatingTokenBucketLimiter(
 		rotatingNumBuckets,
 		rotatingBurstCapacity,

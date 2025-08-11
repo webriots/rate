@@ -27,6 +27,9 @@ type TokenBucketLimiter struct {
 	seed          maphash.Seed      // Used for index bucket hash gen
 }
 
+// Compile-time assertion that TokenBucketLimiter implements Limiter
+var _ Limiter = (*TokenBucketLimiter)(nil)
+
 // NewTokenBucketLimiter creates a new token bucket rate limiter with
 // the specified parameters:
 //

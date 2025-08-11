@@ -22,6 +22,9 @@ type AIMDTokenBucketLimiter struct {
 	rateUnit time.Duration      // Time unit for rate calculations
 }
 
+// Compile-time assertion that AIMDTokenBucketLimiter implements Limiter
+var _ Limiter = (*AIMDTokenBucketLimiter)(nil)
+
 // NewAIMDTokenBucketLimiter creates a new AIMD token bucket limiter
 // with the given parameters:
 //
