@@ -22,6 +22,9 @@ type AIMDTokenBucketLimiter struct {
 	rateUnit time.Duration      // Time unit for rate calculations
 }
 
+// Compile-time assertion that AIMDTokenBucketLimiter implements Limiter
+var _ Limiter = (*AIMDTokenBucketLimiter)(nil)
+
 // NewAIMDTokenBucketLimiter creates a new AIMD token bucket limiter
 // with the given parameters:
 //
@@ -160,25 +163,44 @@ func NewAIMDTokenBucketLimiter(
 // taken, false otherwise. This method is thread-safe and can be
 // called concurrently from multiple goroutines.
 func (a *AIMDTokenBucketLimiter) TakeToken(id []byte) bool {
+	return a.TakeTokens(id, 1)
+}
+
+// TakeTokens attempts to take n tokens for the given ID. It returns
+// true if all n tokens were successfully taken, false if the
+// operation should be rate limited. This method is thread-safe and
+// can be called concurrently from multiple goroutines. The operation
+// is atomic: either all n tokens are taken, or none are taken.
+func (a *AIMDTokenBucketLimiter) TakeTokens(id []byte, n uint8) bool {
 	now := nowfn()
 	index := a.limiter.index(id)
 	rate := a.rates.Get(index)
 	nano := nanoRate(a.rateUnit, rate)
-	return a.limiter.takeTokenInner(index, nano, now)
+	return a.limiter.takeTokenInner(index, nano, now, n)
 }
 
-// Check returns whether a token would be available for the given ID
-// without actually taking it. This is useful for preemptively
+// CheckToken returns whether a token would be available for the given
+// ID without actually taking it. This is useful for preemptively
 // checking if an operation would be rate limited before attempting
 // it. Returns true if a token would be available, false otherwise.
 // This method is thread-safe and can be called concurrently from
 // multiple goroutines.
-func (a *AIMDTokenBucketLimiter) Check(id []byte) bool {
+func (a *AIMDTokenBucketLimiter) CheckToken(id []byte) bool {
+	return a.CheckTokens(id, 1)
+}
+
+// CheckTokens returns whether n tokens would be available for the
+// given ID without actually taking them. This is useful for
+// preemptively checking if an operation would be rate limited before
+// attempting it. Returns true if all n tokens would be available,
+// false otherwise. This method is thread-safe and can be called
+// concurrently from multiple goroutines.
+func (a *AIMDTokenBucketLimiter) CheckTokens(id []byte, n uint8) bool {
 	now := nowfn()
 	index := a.limiter.index(id)
 	rate := a.rates.Get(index)
 	nano := nanoRate(a.rateUnit, rate)
-	return a.limiter.checkInner(index, nano, now)
+	return a.limiter.checkInner(index, nano, now, n)
 }
 
 // IncreaseRate additively increases the rate for the bucket

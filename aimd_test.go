@@ -849,7 +849,7 @@ func TestAIMDCheck(t *testing.T) {
 	id := []byte("check-test")
 
 	// Initially, tokens should be available
-	if !limiter.Check(id) {
+	if !limiter.CheckToken(id) {
 		t.Error("Check should return true initially (tokens available)")
 	}
 
@@ -861,12 +861,12 @@ func TestAIMDCheck(t *testing.T) {
 	}
 
 	// Check should return false when no tokens are available
-	if limiter.Check(id) {
+	if limiter.CheckToken(id) {
 		t.Error("Check should return false after burst (rate limited)")
 	}
 
 	// Check should not consume tokens
-	if limiter.Check(id) {
+	if limiter.CheckToken(id) {
 		t.Error("Check should not consume tokens")
 	}
 
@@ -874,7 +874,7 @@ func TestAIMDCheck(t *testing.T) {
 	tick(time.Second * 2) // Allow refill based on rate
 
 	// Check should now return true
-	if !limiter.Check(id) {
+	if !limiter.CheckToken(id) {
 		t.Error("Check should return true after refill")
 	}
 
@@ -894,7 +894,7 @@ func TestAIMDCheckAfterConsumption(t *testing.T) {
 	id := []byte("check-vs-take")
 
 	// Initially should have tokens
-	if !limiter.Check(id) {
+	if !limiter.CheckToken(id) {
 		t.Error("Check should return true initially (tokens available)")
 	}
 
@@ -911,7 +911,7 @@ func TestAIMDCheckAfterConsumption(t *testing.T) {
 	}
 
 	// Check should also report empty
-	if limiter.Check(id) {
+	if limiter.CheckToken(id) {
 		t.Error("Check should return false when bucket is empty")
 	}
 
@@ -919,7 +919,7 @@ func TestAIMDCheckAfterConsumption(t *testing.T) {
 	tick(time.Second)
 
 	// Should eventually have tokens again
-	if !limiter.Check(id) {
+	if !limiter.CheckToken(id) {
 		t.Error("Check should return true after refill")
 	}
 
