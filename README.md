@@ -485,6 +485,8 @@ The constructor performs validation on all parameters and returns descriptive er
 - `CheckTokens(id []byte, n uint8) bool`: Checks if n tokens would be available without consuming them
 - `TakeToken(id []byte) bool`: Attempts to take a single token, returns true if successful
 - `TakeTokens(id []byte, n uint8) bool`: Attempts to take n tokens atomically, returns true if all n tokens were taken
+- `SetRefillRate(refillRate float64) error`: Updates the refill rate in-place while preserving existing bucket state
+- `RefillRate() float64`: Returns the current refill rate
 - `RotationInterval() time.Duration`: Returns the automatically calculated rotation interval
 
 #### Collision-Resistant Algorithm Explained

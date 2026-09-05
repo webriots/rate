@@ -65,14 +65,8 @@ func NewTokenBucketLimiter(
 	refillRate float64,
 	refillRateUnit time.Duration,
 ) (*TokenBucketLimiter, error) {
-	if math.IsNaN(refillRate) || math.IsInf(refillRate, 0) || refillRate <= 0 {
-		return nil, fmt.Errorf("refillRate must be a positive, finite number")
-	}
-
-	if rate := float64(refillRateUnit.Nanoseconds()); rate <= 0 {
-		return nil, fmt.Errorf("refillRateUnit must represent a positive duration")
-	} else if rate > math.MaxFloat64/refillRate {
-		return nil, fmt.Errorf("refillRate per duration is too large")
+	if err := validateRefillRate(refillRate, refillRateUnit); err != nil {
+		return nil, err
 	}
 
 	n := ceilPow2(uint64(numBuckets))
@@ -90,6 +84,20 @@ func NewTokenBucketLimiter(
 		nanosPerToken: nanoRate(refillRateUnit, refillRate),
 		seed:          maphash.MakeSeed(),
 	}, nil
+}
+
+func validateRefillRate(refillRate float64, refillRateUnit time.Duration) error {
+	if math.IsNaN(refillRate) || math.IsInf(refillRate, 0) || refillRate <= 0 {
+		return fmt.Errorf("refillRate must be a positive, finite number")
+	}
+
+	if rate := float64(refillRateUnit.Nanoseconds()); rate <= 0 {
+		return fmt.Errorf("refillRateUnit must represent a positive duration")
+	} else if rate > math.MaxFloat64/refillRate {
+		return fmt.Errorf("refillRate per duration is too large")
+	}
+
+	return nil
 }
 
 // CheckToken returns whether a token would be available for the given

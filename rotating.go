@@ -20,6 +20,12 @@ type rotatingPair struct {
 	rotated time56.Time
 }
 
+type refillState struct {
+	refillRate       float64
+	nanosPerToken    int64
+	nanosPerRotation int64
+}
+
 // RotatingTokenBucketLimiter implements a collision-resistant token
 // bucket rate limiter. It maintains two TokenBucketLimiters with
 // different hash seeds and rotates between them periodically. This
@@ -40,8 +46,10 @@ type rotatingPair struct {
 // last for the duration of the rotation period, providing better
 // fairness and accuracy compared to a single TokenBucketLimiter.
 type RotatingTokenBucketLimiter struct {
-	pair             atomic.Pointer[rotatingPair] // Current limiter pair
-	nanosPerRotation int64                        // Rotation interval in nanoseconds
+	pair           atomic.Pointer[rotatingPair] // Current limiter pair
+	burstCapacity  uint8
+	refillRateUnit time.Duration
+	state          atomic.Pointer[refillState]
 }
 
 // Compile-time assertion that RotatingTokenBucketLimiter implements Limiter
@@ -97,18 +105,18 @@ func NewRotatingTokenBucketLimiter(
 	refillRate float64,
 	refillRateUnit time.Duration,
 ) (*RotatingTokenBucketLimiter, error) {
-	checked, err := NewTokenBucketLimiter(
+	if err := validateRefillRate(refillRate, refillRateUnit); err != nil {
+		return nil, err
+	}
+
+	// Validation passed above, and NewTokenBucketLimiter currently has no
+	// additional error cases beyond parameter validation.
+	checked, _ := NewTokenBucketLimiter(
 		numBuckets,
 		burstCapacity,
 		refillRate,
 		refillRateUnit,
 	)
-	if err != nil {
-		return nil, err
-	}
-
-	// validation passed for exact params above, continue w/o checking
-	// error for 100% coverage.
 
 	ignored, _ := NewTokenBucketLimiter(
 		numBuckets,
@@ -121,13 +129,11 @@ func NewRotatingTokenBucketLimiter(
 	// convergence of all token buckets to steady state before rotation
 	// occurs. This guarantees correctness by eliminating state
 	// inconsistency issues when hash mappings change during rotation.
-	refillTime := time.Duration(float64(burstCapacity) / refillRate * float64(refillRateUnit))
-	safetyFactor := 5.0
-	rotationRate := time.Duration(float64(refillTime) * safetyFactor)
-
 	limiter := &RotatingTokenBucketLimiter{
-		nanosPerRotation: rotationRate.Nanoseconds(),
+		burstCapacity:  burstCapacity,
+		refillRateUnit: refillRateUnit,
 	}
+	limiter.setRefillRateState(refillRate)
 
 	pair := &rotatingPair{
 		checked: checked,
@@ -157,13 +163,13 @@ func NewRotatingTokenBucketLimiter(
 // This approach ensures that hash collisions are resolved
 // periodically without affecting the thread-safety or performance of
 // the limiter.
-func (r *RotatingTokenBucketLimiter) load(nowNS int64) *rotatingPair {
+func (r *RotatingTokenBucketLimiter) load(nowNS int64, state *refillState) *rotatingPair {
 	now := time56.Unix(nowNS)
 
 	for {
 		pair := r.pair.Load()
 
-		if now.Since(pair.rotated) < r.nanosPerRotation {
+		if now.Since(pair.rotated) < state.nanosPerRotation {
 			return pair
 		}
 
@@ -220,9 +226,11 @@ func (r *RotatingTokenBucketLimiter) CheckToken(id []byte) bool {
 // multiple goroutines.
 func (r *RotatingTokenBucketLimiter) CheckTokens(id []byte, n uint8) bool {
 	now := nowfn()
-	pair := r.load(now)
-	pair.ignored.checkTokensWithNow(id, n, now)
-	return pair.checked.checkTokensWithNow(id, n, now)
+	state := r.loadRefillState()
+	pair := r.load(now, state)
+	rate := state.nanosPerToken
+	pair.ignored.checkInner(pair.ignored.index(id), rate, now, n)
+	return pair.checked.checkInner(pair.checked.index(id), rate, now, n)
 }
 
 // TakeToken attempts to take a token for the given ID. It returns
@@ -273,9 +281,29 @@ func (r *RotatingTokenBucketLimiter) TakeToken(id []byte) bool {
 // multiple goroutines.
 func (r *RotatingTokenBucketLimiter) TakeTokens(id []byte, n uint8) bool {
 	now := nowfn()
-	pair := r.load(now)
-	pair.ignored.takeTokensWithNow(id, n, now)
-	return pair.checked.takeTokensWithNow(id, n, now)
+	state := r.loadRefillState()
+	pair := r.load(now, state)
+	rate := state.nanosPerToken
+	pair.ignored.takeTokenInner(pair.ignored.index(id), rate, now, n)
+	return pair.checked.takeTokenInner(pair.checked.index(id), rate, now, n)
+}
+
+// SetRefillRate updates the refill rate used by the rotating limiter
+// without rebuilding bucket state. Existing tokens are preserved, and
+// subsequent checks, takes, and rotation timing use the new rate.
+func (r *RotatingTokenBucketLimiter) SetRefillRate(refillRate float64) error {
+	if err := validateRefillRate(refillRate, r.refillRateUnit); err != nil {
+		return err
+	}
+
+	r.setRefillRateState(refillRate)
+	return nil
+}
+
+// RefillRate returns the current refill rate in tokens per
+// refillRateUnit.
+func (r *RotatingTokenBucketLimiter) RefillRate() float64 {
+	return r.loadRefillState().refillRate
 }
 
 // RotationInterval returns the automatically calculated rotation
@@ -290,5 +318,23 @@ func (r *RotatingTokenBucketLimiter) TakeTokens(id []byte, n uint8) bool {
 // This method is thread-safe and can be called concurrently from
 // multiple goroutines.
 func (r *RotatingTokenBucketLimiter) RotationInterval() time.Duration {
-	return time.Duration(r.nanosPerRotation)
+	return time.Duration(r.loadRefillState().nanosPerRotation)
+}
+
+func (r *RotatingTokenBucketLimiter) setRefillRateState(refillRate float64) {
+	r.state.Store(&refillState{
+		refillRate:       refillRate,
+		nanosPerToken:    nanoRate(r.refillRateUnit, refillRate),
+		nanosPerRotation: calculateRotationInterval(r.burstCapacity, refillRate, r.refillRateUnit).Nanoseconds(),
+	})
+}
+
+func (r *RotatingTokenBucketLimiter) loadRefillState() *refillState {
+	return r.state.Load()
+}
+
+func calculateRotationInterval(burstCapacity uint8, refillRate float64, refillRateUnit time.Duration) time.Duration {
+	refillTime := time.Duration(float64(burstCapacity) / refillRate * float64(refillRateUnit))
+	safetyFactor := 5.0
+	return time.Duration(float64(refillTime) * safetyFactor)
 }
